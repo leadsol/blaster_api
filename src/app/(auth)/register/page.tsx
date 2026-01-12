@@ -51,14 +51,13 @@ export default function RegisterPage() {
 
     const supabase = createClient()
 
-    // Check if user already exists
-    const { data: existingUser } = await supabase
+    // Check if user already exists in profiles
+    const { data: existingUsers } = await supabase
       .from('profiles')
       .select('id')
       .eq('email', email)
-      .single()
 
-    if (existingUser) {
+    if (existingUsers && existingUsers.length > 0) {
       setError('משתמש עם אימייל זה כבר קיים במערכת')
       setLoading(false)
       return
