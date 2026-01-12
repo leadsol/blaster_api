@@ -1,0 +1,928 @@
+'use client'
+
+import React, { useState, useEffect } from 'react'
+import { useParams, useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
+import { Search, Trash2, Plus, ChevronDown, ChevronUp, ArrowRight, ArrowLeft, Pencil, X, Check } from 'lucide-react'
+import { useTheme } from '@/contexts/ThemeContext'
+import { ConfirmModal, AlertModal } from '@/components/modals'
+
+interface CampaignMessage {
+  id: string
+  phone: string
+  name: string | null
+  message_content: string
+  sent_message_content?: string // The actual message that was sent (after variation selection)
+  sender_session_name?: string // The session/device name that sent this message
+  sender_phone?: string // The phone number of the sender
+  status: string
+  variables?: Record<string, string>
+}
+
+interface Campaign {
+  id: string
+  name: string
+  message_template: string
+  status: string
+  total_recipients: number
+  scheduled_at: string | null
+  delay_min: number
+  delay_max: number
+  pause_after_messages: number | null
+  pause_seconds: number | null
+  new_list_name: string | null
+  existing_list_id: string | null
+  multi_device: boolean
+  device_ids: string[] | null
+  // Poll data
+  poll_question: string | null
+  poll_options: string[] | null
+  poll_multiple_answers: boolean
+  // Message variations
+  message_variations: string[] | null
+}
+
+interface ContactList {
+  id: string
+  name: string
+}
+
+export default function CampaignSummaryPage() {
+  const params = useParams()
+  const router = useRouter()
+  const { darkMode } = useTheme()
+  const campaignId = params.id as string
+
+  const [campaign, setCampaign] = useState<Campaign | null>(null)
+  const [messages, setMessages] = useState<CampaignMessage[]>([])
+  const [existingListName, setExistingListName] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [launching, setLaunching] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
+  const [sortColumn, setSortColumn] = useState<string>('')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editData, setEditData] = useState<{
+    name: string
+    phone: string
+    message_content: string
+    variables: Record<string, string>
+  } | null>(null)
+
+  // Dynamic columns from variables
+  const [dynamicColumns, setDynamicColumns] = useState<string[]>([])
+
+  // Modal states
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [showLaunchConfirm, setShowLaunchConfirm] = useState(false)
+  const [alertModal, setAlertModal] = useState<{
+    isOpen: boolean
+    title: string
+    message?: string
+    type: 'success' | 'error' | 'warning' | 'info'
+  }>({ isOpen: false, title: '', type: 'info' })
+
+  useEffect(() => {
+    loadCampaignData()
+  }, [campaignId])
+
+  const loadCampaignData = async () => {
+    const supabase = createClient()
+
+    // Load campaign
+    const { data: campaignData, error: campaignError } = await supabase
+      .from('campaigns')
+      .select('*')
+      .eq('id', campaignId)
+      .single()
+
+    if (campaignError || !campaignData) {
+      console.error('Error loading campaign:', campaignError)
+      router.push('/analytics')
+      return
+    }
+
+    setCampaign(campaignData)
+
+    // Load existing list name if exists
+    if (campaignData.existing_list_id) {
+      const { data: listData } = await supabase
+        .from('contact_lists')
+        .select('name')
+        .eq('id', campaignData.existing_list_id)
+        .single()
+
+      if (listData) {
+        setExistingListName(listData.name)
+      }
+    }
+
+    // Load campaign messages
+    const { data: messagesData, error: messagesError } = await supabase
+      .from('campaign_messages')
+      .select('*')
+      .eq('campaign_id', campaignId)
+      .order('created_at', { ascending: true })
+
+    if (messagesError) {
+      console.error('Error loading messages:', messagesError)
+    } else {
+      setMessages(messagesData || [])
+
+      // Extract dynamic columns from first message with variables
+      if (messagesData && messagesData.length > 0) {
+        const allColumns = new Set<string>()
+        messagesData.forEach(msg => {
+          if (msg.variables) {
+            Object.keys(msg.variables).forEach(key => allColumns.add(key))
+          }
+        })
+        setDynamicColumns(Array.from(allColumns))
+      }
+    }
+
+    setLoading(false)
+  }
+
+  const handleSort = (column: string) => {
+    if (sortColumn === column) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortColumn(column)
+      setSortDirection('asc')
+    }
+  }
+
+  const toggleSelect = (id: string) => {
+    const newSelected = new Set(selectedIds)
+    if (newSelected.has(id)) {
+      newSelected.delete(id)
+    } else {
+      newSelected.add(id)
+    }
+    setSelectedIds(newSelected)
+  }
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filteredMessages.length) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(filteredMessages.map(m => m.id)))
+    }
+  }
+
+  const toggleExpand = (id: string) => {
+    const newExpanded = new Set(expandedIds)
+    if (newExpanded.has(id)) {
+      newExpanded.delete(id)
+    } else {
+      newExpanded.add(id)
+    }
+    setExpandedIds(newExpanded)
+  }
+
+  const startEdit = (message: CampaignMessage) => {
+    setEditingId(message.id)
+    setEditData({
+      name: message.name || '',
+      phone: message.phone,
+      message_content: message.message_content,
+      variables: message.variables || {}
+    })
+  }
+
+  const cancelEdit = () => {
+    setEditingId(null)
+    setEditData(null)
+  }
+
+  const saveEdit = async () => {
+    if (!editingId || !editData) return
+
+    const supabase = createClient()
+    const { error } = await supabase
+      .from('campaign_messages')
+      .update({
+        name: editData.name || null,
+        phone: editData.phone,
+        message_content: editData.message_content,
+        variables: editData.variables
+      })
+      .eq('id', editingId)
+
+    if (error) {
+      console.error('Error updating message:', error)
+      setAlertModal({
+        isOpen: true,
+        title: 'שגיאה בעדכון הרשומה',
+        type: 'error'
+      })
+      return
+    }
+
+    // Update local state
+    setMessages(messages.map(m =>
+      m.id === editingId
+        ? { ...m, name: editData.name || null, phone: editData.phone, message_content: editData.message_content, variables: editData.variables }
+        : m
+    ))
+    setEditingId(null)
+    setEditData(null)
+  }
+
+  const deleteSelected = () => {
+    if (selectedIds.size === 0) return
+    setShowDeleteConfirm(true)
+  }
+
+  const confirmDeleteSelected = async () => {
+    setShowDeleteConfirm(false)
+    const supabase = createClient()
+    const { error } = await supabase
+      .from('campaign_messages')
+      .delete()
+      .in('id', Array.from(selectedIds))
+
+    if (error) {
+      console.error('Error deleting messages:', error)
+      setAlertModal({
+        isOpen: true,
+        title: 'שגיאה במחיקת הרשומות',
+        type: 'error'
+      })
+      return
+    }
+
+    setMessages(messages.filter(m => !selectedIds.has(m.id)))
+    setSelectedIds(new Set())
+  }
+
+  const launchCampaign = () => {
+    if (!campaign) return
+    setShowLaunchConfirm(true)
+  }
+
+  const confirmLaunchCampaign = async () => {
+    if (!campaign) return
+    setShowLaunchConfirm(false)
+
+    setLaunching(true)
+
+    // Start the campaign processing in the background (don't await)
+    // and redirect immediately to analytics
+    fetch(`/api/campaigns/${campaign.id}/process`, {
+      method: 'POST'
+    }).catch(error => {
+      console.error('Campaign processing error:', error)
+    })
+
+    // Redirect immediately - don't wait for processing to complete
+    router.push(`/analytics?campaign=${campaign.id}`)
+  }
+
+  // Filter and sort messages
+  const filteredMessages = messages
+    .filter(m => {
+      const searchLower = searchQuery.toLowerCase()
+      return (
+        (m.name?.toLowerCase() || '').includes(searchLower) ||
+        m.phone.includes(searchQuery) ||
+        m.message_content.toLowerCase().includes(searchLower)
+      )
+    })
+    .sort((a, b) => {
+      if (!sortColumn) return 0
+
+      let aVal = ''
+      let bVal = ''
+
+      if (sortColumn === 'name') {
+        aVal = a.name || ''
+        bVal = b.name || ''
+      } else if (sortColumn === 'phone') {
+        aVal = a.phone
+        bVal = b.phone
+      } else if (sortColumn === 'message') {
+        aVal = a.message_content
+        bVal = b.message_content
+      } else if (a.variables && b.variables) {
+        aVal = a.variables[sortColumn] || ''
+        bVal = b.variables[sortColumn] || ''
+      }
+
+      const comparison = aVal.localeCompare(bVal, 'he')
+      return sortDirection === 'asc' ? comparison : -comparison
+    })
+
+  // Extract first name and last name from name field
+  const getNameParts = (fullName: string | null) => {
+    if (!fullName) return { firstName: '-', lastName: '-' }
+    const parts = fullName.trim().split(' ')
+    return {
+      firstName: parts[0] || '-',
+      lastName: parts.slice(1).join(' ') || '-'
+    }
+  }
+
+  // Get variable value or dash
+  const getVariableValue = (message: CampaignMessage, key: string): string => {
+    if (message.variables && message.variables[key]) {
+      return message.variables[key]
+    }
+    return '-'
+  }
+
+  // Truncate message for preview
+  const truncateMessage = (message: string, maxLength: number = 50) => {
+    if (message.length <= maxLength) return message
+    return message.substring(0, maxLength) + '...'
+  }
+
+  // Format pause duration
+  const formatPauseDuration = () => {
+    if (!campaign?.pause_seconds || !campaign?.pause_after_messages) return null
+    const minutes = Math.floor(campaign.pause_seconds / 60)
+    const seconds = campaign.pause_seconds % 60
+    if (minutes > 0 && seconds > 0) {
+      return `הפוגה של ${minutes} דקות ו-${seconds} שניות אחרי כל ${campaign.pause_after_messages} הודעות`
+    } else if (minutes > 0) {
+      return `הפוגה של ${minutes} דקות אחרי כל ${campaign.pause_after_messages} הודעות`
+    } else {
+      return `הפוגה של ${seconds} שניות אחרי כל ${campaign.pause_after_messages} הודעות`
+    }
+  }
+
+  // Calculate estimated campaign duration
+  const calculateEstimatedDuration = () => {
+    const totalMessages = messages.length
+    if (totalMessages === 0) return null
+
+    // System constants
+    const AVG_DELAY_BETWEEN_MESSAGES = 35 // Average of 10-60 seconds
+    const MESSAGES_PER_BATCH = 30
+    const SYSTEM_BATCH_BREAKS = [30 * 60, 60 * 60, 90 * 60] // in seconds
+    const MAX_MESSAGES_PER_DAY = 90
+
+    let totalSeconds = 0
+
+    // Time for sending messages with delays
+    totalSeconds += totalMessages * AVG_DELAY_BETWEEN_MESSAGES
+
+    // System batch breaks (every 30 messages)
+    const systemBatches = Math.floor(totalMessages / MESSAGES_PER_BATCH)
+    for (let i = 0; i < systemBatches && i < SYSTEM_BATCH_BREAKS.length; i++) {
+      totalSeconds += SYSTEM_BATCH_BREAKS[i]
+    }
+
+    // User-defined pauses (in addition to system)
+    if (campaign?.pause_after_messages && campaign?.pause_seconds) {
+      const userPauseCount = Math.floor(totalMessages / campaign.pause_after_messages)
+      totalSeconds += userPauseCount * campaign.pause_seconds
+    }
+
+    // Calculate days if exceeds daily limit (considering multiple devices)
+    const deviceCount = campaign?.multi_device && campaign?.device_ids ? campaign.device_ids.length : 1
+    const totalDailyLimit = MAX_MESSAGES_PER_DAY * deviceCount
+    const daysNeeded = Math.ceil(totalMessages / totalDailyLimit)
+
+    // Format the duration
+    const hours = Math.floor(totalSeconds / 3600)
+    const minutes = Math.floor((totalSeconds % 3600) / 60)
+
+    let result = ''
+    if (daysNeeded > 1) {
+      result = `כ-${daysNeeded} ימים`
+    } else if (hours > 0) {
+      result = `כ-${hours} שעות`
+      if (minutes > 0) {
+        result += ` ו-${minutes} דקות`
+      }
+    } else {
+      result = `כ-${minutes} דקות`
+    }
+
+    return result
+  }
+
+  if (loading) {
+    return (
+      <div className={`min-h-screen flex items-center justify-center ${darkMode ? 'bg-[#030733]' : 'bg-[#f2f3f8]'}`}>
+        <div className={`text-lg ${darkMode ? 'text-white' : 'text-[#030733]'}`}>טוען...</div>
+      </div>
+    )
+  }
+
+  return (
+    <div className={`min-h-screen p-8 ${darkMode ? 'bg-[#030733]' : 'bg-[#f2f3f8]'}`} dir="rtl">
+      {/* Header */}
+      <div className="flex items-center gap-4 mb-6">
+        <button
+          onClick={() => router.push('/campaigns/new')}
+          className={`p-2 rounded-lg transition-colors ${
+            darkMode ? 'hover:bg-white/10 text-white' : 'hover:bg-gray-100 text-[#030733]'
+          }`}
+        >
+          <ArrowRight className="w-6 h-6" />
+        </button>
+        <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+          סיכום קמפיין
+        </h1>
+      </div>
+
+      {/* Main Layout - Two columns */}
+      <div className="flex gap-6">
+        {/* Right side - Recipients Table */}
+        <div className={`flex-1 rounded-[15px] p-6 ${darkMode ? 'bg-[#0a1155]' : 'bg-white'}`}>
+          {/* Search and Actions */}
+          <div className="flex items-center justify-between gap-4 mb-6">
+            {/* Search */}
+            <div className={`flex-1 max-w-md flex items-center gap-3 px-4 py-3 rounded-lg ${
+              darkMode ? 'bg-[#030733]' : 'bg-[#f2f3f8]'
+            }`}>
+              <Search className={`w-5 h-5 ${darkMode ? 'text-white/50' : 'text-[#505050]'}`} />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="חפש נמענים"
+                className={`flex-1 bg-transparent outline-none text-sm ${
+                  darkMode ? 'text-white placeholder-white/50' : 'text-[#030733] placeholder-[#505050]'
+                }`}
+              />
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={deleteSelected}
+                disabled={selectedIds.size === 0}
+                className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span className="text-sm">מחק</span>
+              </button>
+              <button
+                onClick={() => router.push('/campaigns/new')}
+                className="flex items-center gap-2 px-4 py-2 bg-[#0043e0] text-white rounded-lg hover:bg-[#0036b3] transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                <span className="text-sm">הוסף</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Table */}
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className={`border-b ${darkMode ? 'border-white/10' : 'border-gray-200'}`}>
+                  {/* Checkbox column */}
+                  <th className="py-3 px-2 w-10">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.size === filteredMessages.length && filteredMessages.length > 0}
+                      onChange={toggleSelectAll}
+                      className="w-4 h-4 rounded border-gray-300"
+                    />
+                  </th>
+                  {/* Edit column */}
+                  <th className="py-3 px-2 w-10"></th>
+                  {/* Expand column */}
+                  <th className="py-3 px-2 w-10"></th>
+                  {/* Fixed columns */}
+                  <th
+                    onClick={() => handleSort('name')}
+                    className={`py-3 px-3 text-right text-sm font-semibold cursor-pointer select-none ${
+                      darkMode ? 'text-white' : 'text-[#030733]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1">
+                      <span>שם פרטי</span>
+                      {sortColumn === 'name' && (
+                        sortDirection === 'asc' ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />
+                      )}
+                    </div>
+                  </th>
+                  <th className={`py-3 px-3 text-right text-sm font-semibold ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+                    שם משפחה
+                  </th>
+                  <th
+                    onClick={() => handleSort('phone')}
+                    className={`py-3 px-3 text-right text-sm font-semibold cursor-pointer select-none ${
+                      darkMode ? 'text-white' : 'text-[#030733]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1">
+                      <span>מספר טלפון</span>
+                      {sortColumn === 'phone' && (
+                        sortDirection === 'asc' ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />
+                      )}
+                    </div>
+                  </th>
+                  {/* Dynamic columns */}
+                  {dynamicColumns.map(col => (
+                    <th
+                      key={col}
+                      onClick={() => handleSort(col)}
+                      className={`py-3 px-3 text-right text-sm font-semibold cursor-pointer select-none ${
+                        darkMode ? 'text-white' : 'text-[#030733]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1">
+                        <span>{col}</span>
+                        {sortColumn === col && (
+                          sortDirection === 'asc' ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />
+                        )}
+                      </div>
+                    </th>
+                  ))}
+                  {/* Message column */}
+                  <th
+                    onClick={() => handleSort('message')}
+                    className={`py-3 px-3 text-right text-sm font-semibold cursor-pointer select-none ${
+                      darkMode ? 'text-white' : 'text-[#030733]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1">
+                      <span>ההודעה שתשלח בקמפיין</span>
+                      {sortColumn === 'message' && (
+                        sortDirection === 'asc' ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />
+                      )}
+                    </div>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredMessages.map((message) => {
+                  const nameParts = getNameParts(message.name)
+                  const isExpanded = expandedIds.has(message.id)
+                  const isSelected = selectedIds.has(message.id)
+                  const isEditing = editingId === message.id
+
+                  return (
+                    <React.Fragment key={message.id}>
+                      <tr
+                        className={`border-b transition-colors ${
+                          darkMode
+                            ? `border-white/5 ${isSelected ? 'bg-white/10' : 'hover:bg-white/5'}`
+                            : `border-gray-100 ${isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'}`
+                        }`}
+                      >
+                        {/* Checkbox */}
+                        <td className="py-3 px-2">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleSelect(message.id)}
+                            className="w-4 h-4 rounded border-gray-300"
+                          />
+                        </td>
+                        {/* Edit button */}
+                        <td className="py-3 px-2">
+                          {isEditing ? (
+                            <div className="flex gap-1">
+                              <button
+                                onClick={saveEdit}
+                                className="p-1 rounded text-green-500 hover:bg-green-500/20"
+                              >
+                                <Check className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={cancelEdit}
+                                className="p-1 rounded text-red-500 hover:bg-red-500/20"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => startEdit(message)}
+                              className={`p-1 rounded transition-colors ${
+                                darkMode ? 'hover:bg-white/10 text-white/70' : 'hover:bg-gray-100 text-[#505050]'
+                              }`}
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                          )}
+                        </td>
+                        {/* Expand button */}
+                        <td className="py-3 px-2">
+                          <button
+                            onClick={() => toggleExpand(message.id)}
+                            className={`p-1 rounded transition-colors ${
+                              darkMode ? 'hover:bg-white/10 text-white/70' : 'hover:bg-gray-100 text-[#505050]'
+                            }`}
+                          >
+                            {isExpanded ? (
+                              <ChevronUp className="w-4 h-4" />
+                            ) : (
+                              <ChevronDown className="w-4 h-4" />
+                            )}
+                          </button>
+                        </td>
+                        {/* First name */}
+                        <td className={`py-3 px-3 text-sm ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+                          {isEditing ? (
+                            <input
+                              type="text"
+                              value={editData?.name.split(' ')[0] || ''}
+                              onChange={(e) => {
+                                const lastName = editData?.name.split(' ').slice(1).join(' ') || ''
+                                setEditData(prev => prev ? { ...prev, name: `${e.target.value} ${lastName}`.trim() } : null)
+                              }}
+                              className={`w-full px-2 py-1 rounded text-sm ${
+                                darkMode ? 'bg-[#030733] text-white' : 'bg-[#f2f3f8] text-[#030733]'
+                              }`}
+                            />
+                          ) : (
+                            nameParts.firstName
+                          )}
+                        </td>
+                        {/* Last name */}
+                        <td className={`py-3 px-3 text-sm ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+                          {isEditing ? (
+                            <input
+                              type="text"
+                              value={editData?.name.split(' ').slice(1).join(' ') || ''}
+                              onChange={(e) => {
+                                const firstName = editData?.name.split(' ')[0] || ''
+                                setEditData(prev => prev ? { ...prev, name: `${firstName} ${e.target.value}`.trim() } : null)
+                              }}
+                              className={`w-full px-2 py-1 rounded text-sm ${
+                                darkMode ? 'bg-[#030733] text-white' : 'bg-[#f2f3f8] text-[#030733]'
+                              }`}
+                            />
+                          ) : (
+                            nameParts.lastName
+                          )}
+                        </td>
+                        {/* Phone */}
+                        <td className={`py-3 px-3 text-sm ${darkMode ? 'text-white' : 'text-[#030733]'}`} dir="ltr">
+                          {isEditing ? (
+                            <input
+                              type="text"
+                              value={editData?.phone || ''}
+                              onChange={(e) => setEditData(prev => prev ? { ...prev, phone: e.target.value } : null)}
+                              className={`w-full px-2 py-1 rounded text-sm ${
+                                darkMode ? 'bg-[#030733] text-white' : 'bg-[#f2f3f8] text-[#030733]'
+                              }`}
+                            />
+                          ) : (
+                            message.phone
+                          )}
+                        </td>
+                        {/* Dynamic columns */}
+                        {dynamicColumns.map(col => (
+                          <td
+                            key={col}
+                            className={`py-3 px-3 text-sm ${darkMode ? 'text-white' : 'text-[#030733]'}`}
+                          >
+                            {isEditing ? (
+                              <input
+                                type="text"
+                                value={editData?.variables[col] || ''}
+                                onChange={(e) => setEditData(prev => prev ? {
+                                  ...prev,
+                                  variables: { ...prev.variables, [col]: e.target.value }
+                                } : null)}
+                                className={`w-full px-2 py-1 rounded text-sm ${
+                                  darkMode ? 'bg-[#030733] text-white' : 'bg-[#f2f3f8] text-[#030733]'
+                                }`}
+                              />
+                            ) : (
+                              getVariableValue(message, col)
+                            )}
+                          </td>
+                        ))}
+                        {/* Message preview - show actual sent message if available */}
+                        <td className={`py-3 px-3 text-sm ${darkMode ? 'text-white/80' : 'text-[#505050]'}`}>
+                          {isEditing ? (
+                            <textarea
+                              value={editData?.message_content || ''}
+                              onChange={(e) => setEditData(prev => prev ? { ...prev, message_content: e.target.value } : null)}
+                              className={`w-full px-2 py-1 rounded text-sm min-h-[60px] ${
+                                darkMode ? 'bg-[#030733] text-white' : 'bg-[#f2f3f8] text-[#030733]'
+                              }`}
+                            />
+                          ) : (
+                            truncateMessage(message.sent_message_content || message.message_content)
+                          )}
+                        </td>
+                      </tr>
+                      {/* Expanded row with full message and sender info */}
+                      {isExpanded && !isEditing && (
+                        <tr className={darkMode ? 'bg-white/5' : 'bg-gray-50'}>
+                          <td colSpan={6 + dynamicColumns.length + 1} className="py-4 px-6">
+                            {/* Sender info if exists */}
+                            {message.sender_session_name && (
+                              <div className={`text-sm mb-3 pb-3 border-b ${darkMode ? 'border-white/10 text-blue-400' : 'border-gray-200 text-blue-600'}`}>
+                                <span className="font-medium">נשלח מ: </span>
+                                <span>{message.sender_session_name}</span>
+                                {message.sender_phone && (
+                                  <span className="mr-2" dir="ltr">
+                                    ({message.sender_phone.startsWith('972')
+                                      ? `0${message.sender_phone.slice(3, 5)}-${message.sender_phone.slice(5)}`
+                                      : message.sender_phone})
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                            <div className={`text-sm leading-relaxed whitespace-pre-wrap ${
+                              darkMode ? 'text-white/90' : 'text-[#030733]'
+                            }`}>
+                              <span className={`font-semibold mb-2 block ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+                                {message.sent_message_content ? 'ההודעה שנשלחה:' : 'ההודעה המלאה:'}
+                              </span>
+                              {message.sent_message_content || message.message_content}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  )
+                })}
+              </tbody>
+            </table>
+
+            {/* Empty state */}
+            {filteredMessages.length === 0 && (
+              <div className={`py-12 text-center ${darkMode ? 'text-white/50' : 'text-[#505050]'}`}>
+                {searchQuery ? 'לא נמצאו תוצאות' : 'אין נמענים בקמפיין זה'}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Left side - Campaign Info */}
+        <div className="w-[400px] flex flex-col gap-4">
+          {/* Campaign Data Card */}
+          <div className={`rounded-[15px] p-6 ${darkMode ? 'bg-[#0a1155]' : 'bg-white'}`}>
+            <h2 className={`text-[32px] font-semibold mb-6 ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+              נתוני הקמפיין
+            </h2>
+
+            <div className={`space-y-3 text-[16px] leading-[24.8px] ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+              <p>
+                <span className="font-semibold">שם הקמפיין - </span>
+                <span className="font-normal">{campaign?.name}</span>
+              </p>
+
+              {campaign?.scheduled_at && (
+                <p>
+                  <span className="font-semibold">תזמון הקמפיין - </span>
+                  <span className="font-normal">
+                    ל-{new Date(campaign.scheduled_at).toLocaleDateString('he-IL')} בשעה {new Date(campaign.scheduled_at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </p>
+              )}
+
+              {formatPauseDuration() && (
+                <p>
+                  <span className="font-semibold">הפוגת שליחה - </span>
+                  <span className="font-normal">{formatPauseDuration()}</span>
+                </p>
+              )}
+
+              {campaign?.new_list_name && (
+                <p>
+                  <span className="font-semibold">רשימת לקוחות חדשה - </span>
+                  <span className="font-normal">תיווצר בעת ההפצה</span>
+                </p>
+              )}
+
+              {existingListName && (
+                <p>
+                  <span className="font-semibold">שיוך רשימה - </span>
+                  <span className="font-normal">הנמענים ברשימה זו יכנסו לרשימת הלקוחות "{existingListName}"</span>
+                </p>
+              )}
+
+              <p>
+                <span className="font-semibold">סה"כ נמענים - </span>
+                <span className="font-normal">{messages.length}</span>
+              </p>
+
+              {campaign?.multi_device && campaign?.device_ids && campaign.device_ids.length > 1 && (
+                <p>
+                  <span className="font-semibold">מכשירים - </span>
+                  <span className="font-normal">{campaign.device_ids.length} מכשירים (עד {campaign.device_ids.length * 90} הודעות ליום)</span>
+                </p>
+              )}
+
+              {campaign?.message_variations && campaign.message_variations.length > 1 && (
+                <p>
+                  <span className="font-semibold">וריאציות הודעה - </span>
+                  <span className="font-normal">{campaign.message_variations.length} וריאציות</span>
+                </p>
+              )}
+
+              {campaign?.poll_question && campaign?.poll_options && (
+                <div className="mt-4 pt-4 border-t border-white/10">
+                  <span className="font-semibold block mb-2">סקר מצורף:</span>
+                  <div className={`p-3 rounded-lg ${darkMode ? 'bg-[#030733]' : 'bg-[#f2f3f8]'}`}>
+                    <p className="font-medium mb-2">{campaign.poll_question}</p>
+                    <ul className="space-y-1">
+                      {campaign.poll_options.map((option, idx) => (
+                        <li key={idx} className={`text-sm flex items-center gap-2 ${darkMode ? 'text-white/70' : 'text-[#505050]'}`}>
+                          <span className={`w-4 h-4 rounded-full border flex items-center justify-center text-xs ${
+                            darkMode ? 'border-white/30' : 'border-gray-300'
+                          }`}>
+                            {idx + 1}
+                          </span>
+                          {option}
+                        </li>
+                      ))}
+                    </ul>
+                    {campaign.poll_multiple_answers && (
+                      <p className={`text-xs mt-2 ${darkMode ? 'text-white/50' : 'text-gray-400'}`}>
+                        * ניתן לבחור מספר תשובות
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {calculateEstimatedDuration() && (
+                <p>
+                  <span className="font-semibold">זמן משוער לסיום - </span>
+                  <span className="font-normal">{calculateEstimatedDuration()}</span>
+                </p>
+              )}
+
+              <p>
+                <span className="font-semibold">סטטוס - </span>
+                <span className="font-normal">
+                  {campaign?.status === 'running' ? 'פועל' :
+                   campaign?.status === 'scheduled' ? 'מתוזמן' :
+                   campaign?.status === 'completed' ? 'הושלם' :
+                   campaign?.status === 'paused' ? 'מושהה' : 'טיוטה'}
+                </span>
+              </p>
+            </div>
+          </div>
+
+          {/* Launch Button */}
+          <button
+            onClick={launchCampaign}
+            disabled={launching || campaign?.status === 'running' || campaign?.status === 'completed'}
+            className="w-full h-[47px] px-[14px] py-[7px] bg-[#030733] text-white rounded-[10px] text-[16px] font-semibold hover:bg-[#0a1155] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {launching ? 'משגר...' : 'סיימתי לעבור על הנתונים, שגר את הקמפיין!'}
+          </button>
+
+          {/* Back Button */}
+          <button
+            onClick={() => router.push(`/campaigns/new?edit=${campaignId}`)}
+            disabled={campaign?.status !== 'draft'}
+            className={`w-full h-[47px] px-[14px] py-[7px] rounded-[10px] text-[16px] font-semibold transition-colors flex items-center justify-center gap-2 ${
+              campaign?.status !== 'draft'
+                ? darkMode
+                  ? 'bg-white/5 text-white/30 cursor-not-allowed'
+                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                : darkMode
+                  ? 'bg-white/10 text-white hover:bg-white/20'
+                  : 'bg-[#f2f3f8] text-[#030733] hover:bg-gray-200'
+            }`}
+          >
+            <ArrowLeft className="w-5 h-5" />
+            <span>חזרה לעריכת הקמפיין</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={confirmDeleteSelected}
+        title={`האם למחוק ${selectedIds.size} רשומות?`}
+        subtitle="פעולה זו לא ניתנת לביטול"
+        confirmText="כן, מחק"
+        cancelText="לא, בטל"
+        variant="danger"
+      />
+
+      {/* Launch Campaign Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showLaunchConfirm}
+        onClose={() => setShowLaunchConfirm(false)}
+        onConfirm={confirmLaunchCampaign}
+        title="האם לשגר את הקמפיין?"
+        subtitle={`יישלחו ${messages.length} הודעות`}
+        confirmText="כן, שגר!"
+        cancelText="לא, חזור"
+      />
+
+      {/* Alert Modal */}
+      <AlertModal
+        isOpen={alertModal.isOpen}
+        onClose={() => setAlertModal({ ...alertModal, isOpen: false })}
+        title={alertModal.title}
+        message={alertModal.message}
+        type={alertModal.type}
+      />
+    </div>
+  )
+}

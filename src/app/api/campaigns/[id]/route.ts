@@ -1,0 +1,378 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
+
+// GET - Get single campaign with messages
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id: campaignId } = await params
+
+  try {
+    const supabase = await createClient()
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { data: campaign, error } = await supabase
+      .from('campaigns')
+      .select(`
+        *,
+        connection:connections(session_name, phone_number, display_name),
+        messages:campaign_messages(*)
+      `)
+      .eq('id', campaignId)
+      .single()
+
+    if (error) {
+      console.error('Error fetching campaign:', error)
+      return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
+    }
+
+    return NextResponse.json({ campaign })
+  } catch (error) {
+    console.error('Campaign GET error:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+// PATCH - Update campaign (pause/resume/cancel)
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id: campaignId } = await params
+
+  try {
+    const supabase = await createClient()
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const body = await request.json()
+    const { action } = body
+
+    // Get current campaign status
+    const { data: campaign, error: fetchError } = await supabase
+      .from('campaigns')
+      .select('status')
+      .eq('id', campaignId)
+      .single()
+
+    if (fetchError || !campaign) {
+      return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
+    }
+
+    let newStatus: string
+    let message: string
+
+    switch (action) {
+      case 'pause':
+        if (campaign.status !== 'running') {
+          return NextResponse.json({ error: 'Can only pause running campaigns' }, { status: 400 })
+        }
+        newStatus = 'paused'
+        message = 'Campaign paused'
+        break
+
+      case 'resume':
+        if (campaign.status !== 'paused') {
+          return NextResponse.json({ error: 'Can only resume paused campaigns' }, { status: 400 })
+        }
+        newStatus = 'running'
+        message = 'Campaign resumed'
+
+        // Trigger processing again
+        fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/campaigns/${campaignId}/process`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        }).catch(err => console.error('Failed to trigger campaign processing:', err))
+        break
+
+      case 'cancel':
+        if (!['scheduled', 'running', 'paused'].includes(campaign.status)) {
+          return NextResponse.json({ error: 'Cannot cancel this campaign' }, { status: 400 })
+        }
+        newStatus = 'cancelled'
+        message = 'Campaign cancelled'
+
+        // Also update all pending messages to cancelled
+        const { error: messagesUpdateError } = await supabase
+          .from('campaign_messages')
+          .update({ status: 'cancelled' })
+          .eq('campaign_id', campaignId)
+          .eq('status', 'pending')
+
+        if (messagesUpdateError) {
+          console.error('Error updating messages to cancelled:', messagesUpdateError)
+        }
+        break
+
+      default:
+        return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
+    }
+
+    const { error: updateError } = await supabase
+      .from('campaigns')
+      .update({ status: newStatus })
+      .eq('id', campaignId)
+
+    if (updateError) {
+      console.error('Error updating campaign:', updateError)
+      return NextResponse.json({ error: 'Failed to update campaign' }, { status: 500 })
+    }
+
+    return NextResponse.json({ success: true, message, status: newStatus })
+  } catch (error) {
+    console.error('Campaign PATCH error:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+// PUT - Update campaign (full update for editing)
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id: campaignId } = await params
+
+  try {
+    const supabase = await createClient()
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Check if campaign exists and can be edited (only draft campaigns)
+    const { data: existingCampaign, error: fetchError } = await supabase
+      .from('campaigns')
+      .select('status')
+      .eq('id', campaignId)
+      .single()
+
+    if (fetchError || !existingCampaign) {
+      return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
+    }
+
+    if (existingCampaign.status !== 'draft') {
+      return NextResponse.json({
+        error: 'ניתן לערוך רק קמפיינים בסטטוס טיוטה'
+      }, { status: 400 })
+    }
+
+    const body = await request.json()
+    const {
+      name,
+      connection_id,
+      message_template,
+      media_url,
+      media_type,
+      scheduled_at,
+      delay_min = 3,
+      delay_max = 10,
+      pause_after_messages,
+      pause_seconds,
+      recipients,
+      exclusion_list,
+      new_list_name,
+      existing_list_id,
+      multi_device,
+      device_ids,
+    } = body
+
+    // Validation
+    if (!name || !message_template) {
+      return NextResponse.json({
+        error: 'Missing required fields: name, message_template'
+      }, { status: 400 })
+    }
+
+    // Get the device IDs to use
+    const connectionIds = multi_device && device_ids?.length > 0 ? device_ids : [connection_id]
+
+    if (!connectionIds || connectionIds.length === 0) {
+      return NextResponse.json({
+        error: 'At least one connection is required'
+      }, { status: 400 })
+    }
+
+    if (!recipients || recipients.length === 0) {
+      return NextResponse.json({
+        error: 'At least one recipient is required'
+      }, { status: 400 })
+    }
+
+    // Verify all connections belong to user and are connected
+    const { data: connections, error: connError } = await supabase
+      .from('connections')
+      .select('id, status, session_name')
+      .in('id', connectionIds)
+
+    if (connError || !connections || connections.length === 0) {
+      return NextResponse.json({ error: 'Connections not found' }, { status: 404 })
+    }
+
+    const connectedDevices = connections.filter(c => c.status === 'connected')
+    if (connectedDevices.length === 0) {
+      return NextResponse.json({
+        error: 'No active WhatsApp connections. Please reconnect first.'
+      }, { status: 400 })
+    }
+
+    const primaryConnectionId = connectedDevices[0].id
+
+    // Filter out excluded phones
+    const exclusionSet = new Set((exclusion_list || []).map((p: string) => p.replace(/\D/g, '')))
+    const filteredRecipients = recipients.filter((r: { phone: string }) => {
+      const cleanPhone = r.phone.replace(/\D/g, '')
+      return !exclusionSet.has(cleanPhone)
+    })
+
+    if (filteredRecipients.length === 0) {
+      return NextResponse.json({
+        error: 'All recipients are in the exclusion list'
+      }, { status: 400 })
+    }
+
+    // Update campaign
+    const { error: updateError } = await supabase
+      .from('campaigns')
+      .update({
+        connection_id: primaryConnectionId,
+        name,
+        message_template,
+        media_url: media_url || null,
+        media_type: media_type || null,
+        scheduled_at: scheduled_at || null,
+        total_recipients: filteredRecipients.length,
+        delay_min,
+        delay_max,
+        pause_after_messages: pause_after_messages || null,
+        pause_seconds: pause_seconds || null,
+        new_list_name: new_list_name || null,
+        existing_list_id: existing_list_id || null,
+        multi_device: multi_device || false,
+        device_ids: connectedDevices.map(c => c.id),
+      })
+      .eq('id', campaignId)
+
+    if (updateError) {
+      console.error('Error updating campaign:', updateError)
+      return NextResponse.json({ error: 'Failed to update campaign' }, { status: 500 })
+    }
+
+    // Delete old messages
+    const { error: deleteError } = await supabase
+      .from('campaign_messages')
+      .delete()
+      .eq('campaign_id', campaignId)
+
+    if (deleteError) {
+      console.error('Error deleting old messages:', deleteError)
+      return NextResponse.json({ error: 'Failed to delete old messages' }, { status: 500 })
+    }
+
+    // Create new campaign messages
+    const campaignMessages = filteredRecipients.map((recipient: { phone: string; name?: string; variables?: Record<string, string> }) => {
+      let messageContent = message_template
+      messageContent = messageContent.replace(/\{שם\}/g, recipient.name || '')
+      messageContent = messageContent.replace(/\{טלפון\}/g, recipient.phone)
+
+      if (recipient.variables) {
+        Object.entries(recipient.variables).forEach(([key, value]) => {
+          messageContent = messageContent.replace(new RegExp(`\\{${key}\\}`, 'g'), value)
+        })
+      }
+
+      return {
+        campaign_id: campaignId,
+        phone: recipient.phone,
+        name: recipient.name || null,
+        message_content: messageContent.trim(),
+        variables: recipient.variables || {},
+        status: 'pending',
+      }
+    })
+
+    const { error: messagesError } = await supabase
+      .from('campaign_messages')
+      .insert(campaignMessages)
+
+    if (messagesError) {
+      console.error('Error creating campaign messages:', messagesError)
+      return NextResponse.json({ error: 'Failed to update campaign messages' }, { status: 500 })
+    }
+
+    // Get updated campaign
+    const { data: updatedCampaign } = await supabase
+      .from('campaigns')
+      .select('*')
+      .eq('id', campaignId)
+      .single()
+
+    return NextResponse.json({
+      success: true,
+      campaign: updatedCampaign,
+      message: 'הקמפיין עודכן בהצלחה'
+    })
+
+  } catch (error) {
+    console.error('Campaign PUT error:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+// DELETE - Delete campaign
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id: campaignId } = await params
+
+  try {
+    const supabase = await createClient()
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Check if campaign can be deleted (not running)
+    const { data: campaign, error: fetchError } = await supabase
+      .from('campaigns')
+      .select('status')
+      .eq('id', campaignId)
+      .single()
+
+    if (fetchError || !campaign) {
+      return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
+    }
+
+    if (campaign.status === 'running') {
+      return NextResponse.json({
+        error: 'Cannot delete running campaign. Pause or cancel it first.'
+      }, { status: 400 })
+    }
+
+    // Delete campaign (messages will be deleted via CASCADE)
+    const { error: deleteError } = await supabase
+      .from('campaigns')
+      .delete()
+      .eq('id', campaignId)
+
+    if (deleteError) {
+      console.error('Error deleting campaign:', deleteError)
+      return NextResponse.json({ error: 'Failed to delete campaign' }, { status: 500 })
+    }
+
+    return NextResponse.json({ success: true, message: 'Campaign deleted' })
+  } catch (error) {
+    console.error('Campaign DELETE error:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}

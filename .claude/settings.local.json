@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run dev:*)",
+      "Bash(taskkill:*)",
+      "Bash(powershell -Command:*)",
+      "Bash(cat:*)",
+      "Bash(curl:*)",
+      "Bash(ls:*)",
+      "Bash(timeout /t 2 /nobreak)",
+      "Bash(timeout /t 8 /nobreak)",
+      "Bash(npm run build:*)",
+      "Bash(npm install:*)",
+      "Bash(timeout /t 5 /nobreak)",
+      "Bash(git checkout:*)",
+      "Bash(git status:*)",
+      "Bash(wc:*)",
+      "Bash(if exist \"C:\\\\Users\\\\elira\\\\leadsol\\\\.next\\\\dev\\\\lock\" del /F \"C:\\\\Users\\\\elira\\\\leadsol\\\\.next\\\\dev\\\\lock\")",
+      "Bash(pkill:*)",
+      "Bash(if exist \".next\" rmdir /S /Q \".next\")",
+      "Bash(if exist \"C:\\\\Users\\\\elira\\\\leadsol\\\\.next\" rmdir /S /Q \"C:\\\\Users\\\\elira\\\\leadsol\\\\.next\")",
+      "Bash(tasklist:*)",
+      "Bash(dir /b \"C:\\\\Users\\\\elira\\\\leadsol\\\\src\\\\app\\\\\\(dashboard\\)\\\\campaigns\")",
+      "Bash(npx tsc:*)",
+      "Bash(findstr node:*)",
+      "Bash(dir /b \"C:\\\\Users\\\\elira\\\\leadsol\\\\src\\\\app\\\\\\(dashboard\\)\")",
+      "Bash(dir /b \"C:\\\\Users\\\\elira\\\\leadsol\\\\src\\\\app\\\\api\")",
+      "Bash(if not exist \"C:\\\\Users\\\\elira\\\\leadsol\\\\src\\\\app\\\\api\\\\chat\" mkdir \"C:\\\\Users\\\\elira\\\\leadsol\\\\src\\\\app\\\\api\\\\chat\")",
+      "Bash(find:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}
