@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { isQStashConfigured, scheduleNextBatch } from '@/lib/qstash'
 
 const CRON_SECRET = process.env.CRON_SECRET
@@ -13,13 +13,16 @@ export async function POST(
   const { id: campaignId } = await params
 
   try {
-    const supabase = await createClient()
-
     // Check authentication: either user session or internal cron secret
     const internalSecret = request.headers.get('x-internal-secret')
     const isInternalCall = CRON_SECRET && internalSecret === CRON_SECRET
 
-    if (!isInternalCall) {
+    // Use admin client for internal calls, regular client for user calls
+    let supabase
+    if (isInternalCall) {
+      supabase = createAdminClient()
+    } else {
+      supabase = await createClient()
       // Verify user is authenticated
       const { data: { user }, error: authError } = await supabase.auth.getUser()
 
@@ -169,12 +172,16 @@ export async function POST(
   } catch (error) {
     console.error('Campaign process error:', error)
 
-    // Mark campaign as failed
-    const supabase = await createClient()
-    await supabase
-      .from('campaigns')
-      .update({ status: 'failed' })
-      .eq('id', campaignId)
+    // Mark campaign as failed - use admin client to bypass RLS
+    try {
+      const adminSupabase = createAdminClient()
+      await adminSupabase
+        .from('campaigns')
+        .update({ status: 'failed' })
+        .eq('id', campaignId)
+    } catch (e) {
+      console.error('Failed to update campaign status:', e)
+    }
 
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
