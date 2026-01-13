@@ -126,13 +126,12 @@ async function handler(
       return NextResponse.json({ success: true, completed: true })
     }
 
-    // Schedule messages using the DIFFERENCE between their scheduled_delay_seconds
-    // This preserves the original spacing pattern (10-60 seconds between messages)
-    // Example: if message 1 has delay 35s and message 2 has delay 78s,
-    // message 2 will be sent 43 seconds AFTER message 1 (78-35=43)
+    // Schedule messages with RANDOM delays between 10-60 seconds
+    // This ensures safe spacing to avoid WhatsApp blocking
     let scheduledCount = 0
     let cumulativeDelay = 10 // Start with initial delay of 10 seconds
-    const MIN_SPACING = 10 // Minimum spacing between messages in seconds
+    const MIN_DELAY = 10 // Minimum delay between messages
+    const MAX_DELAY = 60 // Maximum delay between messages
 
     for (let i = 0; i < pendingMessages.length; i++) {
       const message = pendingMessages[i]
@@ -141,19 +140,19 @@ async function handler(
       let delayFromNow: number
 
       if (i === 0) {
-        // First message: send after initial delay
-        delayFromNow = cumulativeDelay
+        // First message: send after initial delay (10-20 seconds)
+        delayFromNow = MIN_DELAY + Math.floor(Math.random() * 10)
+        cumulativeDelay = delayFromNow
       } else {
-        // Calculate the spacing between this message and the previous one
-        // This is the ORIGINAL spacing that was calculated during campaign creation (10-60 seconds)
+        // Calculate the spacing between this message and the previous one from stored values
         const prevDelay = pendingMessages[i - 1].scheduled_delay_seconds || 0
         let spacing = currentDelay - prevDelay
 
-        // CRITICAL: Ensure minimum spacing of 10 seconds between messages
-        // This prevents WhatsApp from blocking the number
-        if (spacing < MIN_SPACING) {
-          console.log(`[PROCESS-BATCH] Warning: spacing ${spacing}s is less than minimum ${MIN_SPACING}s, adjusting`)
-          spacing = MIN_SPACING
+        // If spacing is invalid (< 10 seconds), generate random spacing between 10-60 seconds
+        // This handles legacy campaigns that may not have proper scheduled_delay_seconds
+        if (spacing < MIN_DELAY) {
+          spacing = MIN_DELAY + Math.floor(Math.random() * (MAX_DELAY - MIN_DELAY + 1))
+          console.log(`[PROCESS-BATCH] Generated random spacing: ${spacing}s (original was ${currentDelay - prevDelay}s)`)
         }
 
         // Accumulate the spacing
@@ -161,10 +160,7 @@ async function handler(
         delayFromNow = cumulativeDelay
       }
 
-      // Add small randomness (0-5 seconds) to avoid exact patterns
-      delayFromNow += Math.floor(Math.random() * 5)
-
-      console.log(`[PROCESS-BATCH] Scheduling message ${message.id} with ${delayFromNow}s delay from now (original scheduled_delay: ${currentDelay}s, spacing from prev: ${i > 0 ? currentDelay - (pendingMessages[i-1].scheduled_delay_seconds || 0) : 0}s)`)
+      console.log(`[PROCESS-BATCH] Scheduling message ${message.id} with ${delayFromNow}s total delay from now`)
 
       const result = await scheduleMessage(campaignId, message.id, delayFromNow)
       if (result) {
