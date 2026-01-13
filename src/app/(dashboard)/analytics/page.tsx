@@ -238,7 +238,7 @@ function AnalyticsContent() {
       const remainingMs = estimatedEndTime - referenceTime
 
       if (remainingMs <= 0) {
-        setCountdown('מסיים...')
+        setCountdown('...מסיים')
         return
       }
 

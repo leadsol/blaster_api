@@ -183,6 +183,12 @@ async function handler(
 
       console.log(`[PROCESS-BATCH] Scheduling next batch in ${nextBatchDelay}s (${remaining} messages remaining)`)
       await scheduleNextBatch(campaignId, nextBatchDelay)
+    } else {
+      // No more pending messages - schedule a final check to mark campaign as completed
+      // This will run after the last message is sent
+      const finalCheckDelay = lastScheduledDelay + 15
+      console.log(`[PROCESS-BATCH] Scheduling final check in ${finalCheckDelay}s to mark campaign as completed`)
+      await scheduleNextBatch(campaignId, finalCheckDelay)
     }
 
     return NextResponse.json({
