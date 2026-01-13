@@ -50,8 +50,8 @@ export async function POST(request: NextRequest) {
       media_url,
       media_type,
       scheduled_at,
-      delay_min = 3,
-      delay_max = 10,
+      delay_min = 10,
+      delay_max = 60,
       pause_after_messages,
       pause_seconds,
       recipients, // Array of { phone, name, variables }
