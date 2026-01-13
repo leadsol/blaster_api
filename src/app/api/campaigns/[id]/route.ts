@@ -86,12 +86,14 @@ export async function PATCH(
         newStatus = 'running'
         message = 'Campaign resumed'
 
-        // Trigger processing again - use VERCEL_URL in production
-        const appUrl = process.env.VERCEL_URL
-          ? `https://${process.env.VERCEL_URL}`
-          : (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000')
+        // Trigger processing again - use stable app URL
+        const resumeAppUrl = process.env.NEXT_PUBLIC_APP_URL && process.env.NEXT_PUBLIC_APP_URL !== 'http://localhost:3000'
+          ? process.env.NEXT_PUBLIC_APP_URL
+          : (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
 
-        fetch(`${appUrl}/api/campaigns/${campaignId}/process`, {
+        console.log(`[RESUME] Triggering process at: ${resumeAppUrl}/api/campaigns/${campaignId}/process`)
+
+        fetch(`${resumeAppUrl}/api/campaigns/${campaignId}/process`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
         }).catch(err => console.error('Failed to trigger campaign processing:', err))
