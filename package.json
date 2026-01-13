@@ -17,6 +17,7 @@
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.90.1",
     "@tanstack/react-table": "^8.21.3",
+    "@upstash/qstash": "^2.8.4",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.36.1",
     "clsx": "^2.1.1",
