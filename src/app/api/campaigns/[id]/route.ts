@@ -95,7 +95,10 @@ export async function PATCH(
 
         fetch(`${resumeAppUrl}/api/campaigns/${campaignId}/process`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'x-internal-secret': process.env.CRON_SECRET || '',
+          },
         }).catch(err => console.error('Failed to trigger campaign processing:', err))
         break
 
