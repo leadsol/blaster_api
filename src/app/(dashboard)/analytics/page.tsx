@@ -738,7 +738,7 @@ function AnalyticsContent() {
                         <div className={`w-2 h-2 rounded-full ${conn.status === 'connected' ? 'bg-green-500' : 'bg-red-500'}`} />
                         <div className="flex-1 mr-3">
                           <p className={`text-[14px] ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
-                            {conn.display_name || conn.name}
+                            {conn.display_name || conn.session_name}
                           </p>
                           <p className={`text-[12px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
                             {formatPhoneNumber(conn.phone_number)}
