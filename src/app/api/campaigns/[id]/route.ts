@@ -183,12 +183,25 @@ export async function PUT(
       existing_list_id,
       multi_device,
       device_ids,
+      // Message variations
+      message_variations,
+      // Poll data
+      poll_question,
+      poll_options,
+      poll_multiple_answers,
     } = body
 
-    // Validation
-    if (!name || !message_template) {
+    // Validation - allow empty message if poll is present
+    if (!name) {
       return NextResponse.json({
-        error: 'Missing required fields: name, message_template'
+        error: 'Missing required field: name'
+      }, { status: 400 })
+    }
+
+    // Must have either message_template, poll, or media
+    if (!message_template && !poll_question && !media_url) {
+      return NextResponse.json({
+        error: 'נדרש תוכן הודעה, סקר, או מדיה'
       }, { status: 400 })
     }
 
@@ -245,7 +258,7 @@ export async function PUT(
       .update({
         connection_id: primaryConnectionId,
         name,
-        message_template,
+        message_template: message_template || '',
         media_url: media_url || null,
         media_type: media_type || null,
         scheduled_at: scheduled_at || null,
@@ -258,6 +271,12 @@ export async function PUT(
         existing_list_id: existing_list_id || null,
         multi_device: multi_device || false,
         device_ids: connectedDevices.map(c => c.id),
+        // Message variations
+        message_variations: message_variations || [],
+        // Poll data
+        poll_question: poll_question || null,
+        poll_options: poll_options || null,
+        poll_multiple_answers: poll_multiple_answers || false,
       })
       .eq('id', campaignId)
 
