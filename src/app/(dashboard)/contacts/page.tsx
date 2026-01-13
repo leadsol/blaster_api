@@ -74,6 +74,72 @@ export default function ContactsPage() {
     loadContacts()
   }, [])
 
+  // Realtime subscription for contacts
+  useEffect(() => {
+    const supabase = createClient()
+
+    // Get current user for filtering
+    const setupRealtime = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      // Subscribe to contacts changes for current user
+      const contactsChannel = supabase
+        .channel('contacts-realtime')
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'contacts',
+            filter: `user_id=eq.${user.id}`
+          },
+          (payload) => {
+            console.log('[REALTIME] Contact inserted:', payload.new)
+            setContacts(prev => [payload.new as Contact, ...prev])
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'contacts',
+            filter: `user_id=eq.${user.id}`
+          },
+          (payload) => {
+            console.log('[REALTIME] Contact updated:', payload.new)
+            setContacts(prev => prev.map(c =>
+              c.id === payload.new.id ? { ...c, ...payload.new as Contact } : c
+            ))
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'DELETE',
+            schema: 'public',
+            table: 'contacts',
+            filter: `user_id=eq.${user.id}`
+          },
+          (payload) => {
+            console.log('[REALTIME] Contact deleted:', payload.old)
+            setContacts(prev => prev.filter(c => c.id !== payload.old.id))
+          }
+        )
+        .subscribe()
+
+      return () => {
+        supabase.removeChannel(contactsChannel)
+      }
+    }
+
+    const cleanup = setupRealtime()
+    return () => {
+      cleanup.then(fn => fn?.())
+    }
+  }, [])
+
   const loadContacts = async () => {
     setLoading(true)
     const supabase = createClient()

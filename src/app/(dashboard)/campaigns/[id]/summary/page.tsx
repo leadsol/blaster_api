@@ -89,6 +89,84 @@ export default function CampaignSummaryPage() {
     loadCampaignData()
   }, [campaignId])
 
+  // Realtime subscription for campaign and messages
+  useEffect(() => {
+    if (!campaignId) return
+
+    const supabase = createClient()
+
+    // Subscribe to campaign changes (status updates)
+    const campaignChannel = supabase
+      .channel(`campaign-${campaignId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'campaigns',
+          filter: `id=eq.${campaignId}`
+        },
+        (payload) => {
+          console.log('[REALTIME] Campaign updated:', payload.new)
+          setCampaign(prev => prev ? { ...prev, ...payload.new } : null)
+        }
+      )
+      .subscribe()
+
+    // Subscribe to campaign messages changes (message status updates)
+    const messagesChannel = supabase
+      .channel(`campaign-messages-${campaignId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'campaign_messages',
+          filter: `campaign_id=eq.${campaignId}`
+        },
+        (payload) => {
+          console.log('[REALTIME] Message updated:', payload.new)
+          setMessages(prev => prev.map(m =>
+            m.id === payload.new.id
+              ? { ...m, ...payload.new as CampaignMessage }
+              : m
+          ))
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'campaign_messages',
+          filter: `campaign_id=eq.${campaignId}`
+        },
+        (payload) => {
+          console.log('[REALTIME] Message inserted:', payload.new)
+          setMessages(prev => [...prev, payload.new as CampaignMessage])
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'campaign_messages',
+          filter: `campaign_id=eq.${campaignId}`
+        },
+        (payload) => {
+          console.log('[REALTIME] Message deleted:', payload.old)
+          setMessages(prev => prev.filter(m => m.id !== payload.old.id))
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(campaignChannel)
+      supabase.removeChannel(messagesChannel)
+    }
+  }, [campaignId])
+
   const loadCampaignData = async () => {
     const supabase = createClient()
 

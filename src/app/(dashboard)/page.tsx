@@ -54,6 +54,42 @@ export default function CampaignsPage() {
 
   useEffect(() => {
     loadCampaigns()
+
+    // Set up realtime subscription for campaigns
+    const supabase = createClient()
+
+    const campaignsChannel = supabase
+      .channel('campaigns-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'campaigns'
+        },
+        (payload) => {
+          console.log('[REALTIME] Campaign change:', payload)
+          if (payload.eventType === 'INSERT') {
+            setCampaigns(prev => [payload.new as Campaign, ...prev])
+          } else if (payload.eventType === 'UPDATE') {
+            setCampaigns(prev => prev.map(c =>
+              c.id === payload.new.id ? { ...c, ...payload.new } as Campaign : c
+            ))
+            // Update selected campaign if it's the one that changed
+            setSelectedCampaign(prev =>
+              prev?.id === payload.new.id ? { ...prev, ...payload.new } as Campaign : prev
+            )
+          } else if (payload.eventType === 'DELETE') {
+            setCampaigns(prev => prev.filter(c => c.id !== payload.old.id))
+            setSelectedCampaign(prev => prev?.id === payload.old.id ? null : prev)
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(campaignsChannel)
+    }
   }, [])
 
   const loadCampaigns = async () => {
@@ -87,27 +123,29 @@ export default function CampaignsPage() {
   }
 
   // Recipients will be loaded from database when campaign is selected
-  const [recipients, setRecipients] = useState<Array<{ name: string; phone: string; status: string; time: string }>>([])
+  const [recipients, setRecipients] = useState<Array<{ id: string; name: string; phone: string; status: string; time: string }>>([])
 
-  // Load recipients when campaign is selected
+  // Load recipients when campaign is selected with realtime updates
   useEffect(() => {
-    const loadRecipients = async () => {
-      if (!selectedCampaign) {
-        setRecipients([])
-        return
-      }
+    if (!selectedCampaign) {
+      setRecipients([])
+      return
+    }
 
+    const loadRecipients = async () => {
       const supabase = createClient()
       const { data, error } = await supabase
-        .from('campaign_recipients')
-        .select('*, contacts(first_name, last_name, phone)')
+        .from('campaign_messages')
+        .select('*')
         .eq('campaign_id', selectedCampaign.id)
-        .limit(20)
+        .order('created_at', { ascending: true })
+        .limit(50)
 
       if (!error && data) {
         setRecipients(data.map((r: any) => ({
-          name: r.contacts ? `${r.contacts.first_name || ''} ${r.contacts.last_name || ''}`.trim() || 'ללא שם' : 'ללא שם',
-          phone: r.contacts?.phone || r.phone || '',
+          id: r.id,
+          name: r.name || 'ללא שם',
+          phone: r.phone || '',
           status: r.status || 'pending',
           time: r.sent_at ? format(new Date(r.sent_at), 'HH:mm', { locale: he }) : '-',
         })))
@@ -115,7 +153,40 @@ export default function CampaignsPage() {
     }
 
     loadRecipients()
-  }, [selectedCampaign])
+
+    // Set up realtime subscription for campaign messages
+    const supabase = createClient()
+    const messagesChannel = supabase
+      .channel(`campaign-messages-${selectedCampaign.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'campaign_messages',
+          filter: `campaign_id=eq.${selectedCampaign.id}`
+        },
+        (payload) => {
+          console.log('[REALTIME] Message change:', payload)
+          if (payload.eventType === 'UPDATE') {
+            setRecipients(prev => prev.map(r =>
+              r.id === payload.new.id
+                ? {
+                    ...r,
+                    status: payload.new.status,
+                    time: payload.new.sent_at ? format(new Date(payload.new.sent_at), 'HH:mm', { locale: he }) : r.time,
+                  }
+                : r
+            ))
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(messagesChannel)
+    }
+  }, [selectedCampaign?.id])
 
   return (
     <div className="p-3 sm:p-4 lg:p-6 h-full overflow-y-auto" dir="rtl">
