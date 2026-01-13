@@ -124,45 +124,28 @@ async function handler(
       return NextResponse.json({ success: true, completed: true })
     }
 
-    // Get the base delay (from the first pending message or campaign start)
-    const { data: firstSentMessage } = await supabase
-      .from('campaign_messages')
-      .select('sent_at, scheduled_delay_seconds')
-      .eq('campaign_id', campaignId)
-      .eq('status', 'sent')
-      .order('sent_at', { ascending: false })
-      .limit(1)
-      .single()
+    // Get campaign delay settings
+    const delayMin = campaign.delay_min || 3
+    const delayMax = campaign.delay_max || 10
 
-    // Calculate base time - either from last sent message or now
-    const now = Date.now()
-    let baseTime = now
-
-    if (firstSentMessage && firstSentMessage.sent_at) {
-      // Use the campaign start time adjusted for delays
-      const campaignStartTime = new Date(campaign.started_at || now).getTime()
-      baseTime = campaignStartTime
-    }
-
-    // Schedule each message in the batch
+    // Schedule each message in the batch with proper delays
     let scheduledCount = 0
-    for (const message of pendingMessages) {
-      // Calculate when this message should be sent
-      const scheduledDelaySeconds = message.scheduled_delay_seconds || 0
+    let cumulativeDelay = 0
 
-      // Calculate delay from now
-      const targetTime = baseTime + (scheduledDelaySeconds * 1000)
-      let delayFromNow = Math.max(0, Math.ceil((targetTime - now) / 1000))
+    for (const message of pendingMessages) {
+      // Use the pre-calculated delay from the message, or generate random delay
+      const messageDelay = message.scheduled_delay_seconds ||
+        (Math.floor(Math.random() * (delayMax - delayMin + 1)) + delayMin)
+
+      // Add delay from the LAST message, not from campaign start
+      cumulativeDelay += messageDelay
 
       // Add some randomness to avoid exact timing patterns
-      delayFromNow += Math.floor(Math.random() * 5)
+      const finalDelay = cumulativeDelay + Math.floor(Math.random() * 3)
 
-      // Minimum delay of 1 second between messages
-      delayFromNow = Math.max(1, delayFromNow)
+      console.log(`[PROCESS-BATCH] Scheduling message ${message.id} with ${finalDelay}s delay (cumulative)`)
 
-      console.log(`[PROCESS-BATCH] Scheduling message ${message.id} with ${delayFromNow}s delay`)
-
-      const result = await scheduleMessage(campaignId, message.id, delayFromNow)
+      const result = await scheduleMessage(campaignId, message.id, finalDelay)
       if (result) {
         scheduledCount++
       }
@@ -178,11 +161,9 @@ async function handler(
     const remaining = (remainingCount || 0) - scheduledCount
 
     if (remaining > 0) {
-      // Schedule next batch after the last message in this batch should be sent
-      const lastMessage = pendingMessages[pendingMessages.length - 1]
-      const lastDelay = lastMessage.scheduled_delay_seconds || 0
-      const targetTime = baseTime + (lastDelay * 1000)
-      let nextBatchDelay = Math.max(5, Math.ceil((targetTime - now) / 1000) + 10)
+      // Schedule next batch after all messages in this batch should be sent
+      // Add 10 seconds buffer after the last message
+      const nextBatchDelay = cumulativeDelay + 10
 
       console.log(`[PROCESS-BATCH] Scheduling next batch in ${nextBatchDelay}s (${remaining} messages remaining)`)
       await scheduleNextBatch(campaignId, nextBatchDelay)
