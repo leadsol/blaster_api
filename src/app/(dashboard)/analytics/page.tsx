@@ -205,8 +205,8 @@ function AnalyticsContent() {
 
     // Load connections
     const { data: connectionsData } = await supabase
-      .from('sessions')
-      .select('id, name, phone_number, display_name, status')
+      .from('connections')
+      .select('id, session_name, phone_number, display_name, status')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
 
