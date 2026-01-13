@@ -4,6 +4,20 @@ import { createClient } from '@/lib/supabase/server'
 const WAHA_API_URL = process.env.WAHA_API_URL || 'https://waha.litbe.co.il'
 const WAHA_API_KEY = process.env.WAHA_API_KEY
 
+// Use production URL for webhooks (Vercel sets VERCEL_URL automatically)
+function getWebhookBaseUrl(): string {
+  // First check for explicit app URL
+  if (process.env.NEXT_PUBLIC_APP_URL && !process.env.NEXT_PUBLIC_APP_URL.includes('localhost')) {
+    return process.env.NEXT_PUBLIC_APP_URL
+  }
+  // Vercel provides this automatically in production
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`
+  }
+  // Fallback for local development
+  return process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+}
+
 export async function GET() {
   try {
     // Verify user is authenticated
@@ -68,7 +82,7 @@ export async function POST(request: NextRequest) {
         config: {
           webhooks: [
             {
-              url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/waha/webhook`,
+              url: `${getWebhookBaseUrl()}/api/waha/webhook`,
               events: ['message', 'message.ack', 'session.status'],
             },
           ],
