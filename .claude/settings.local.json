@@ -27,7 +27,14 @@
       "Bash(dir /b \"C:\\\\Users\\\\elira\\\\leadsol\\\\src\\\\app\\\\api\")",
       "Bash(if not exist \"C:\\\\Users\\\\elira\\\\leadsol\\\\src\\\\app\\\\api\\\\chat\" mkdir \"C:\\\\Users\\\\elira\\\\leadsol\\\\src\\\\app\\\\api\\\\chat\")",
       "Bash(find:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nBlaster API - WhatsApp Marketing Platform\n\nFeatures:\n- WhatsApp campaign management\n- Real-time chat with Supabase Realtime\n- Contact lists management\n- Rate limiting with Upstash Redis\n- Authentication with Supabase Auth\n- Responsive dashboard UI\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git branch:*)",
+      "Bash(git push:*)",
+      "Bash(git remote set-url:*)",
+      "Bash(git commit:*)",
+      "Bash(git restore:*)",
+      "Bash(git reset:*)"
     ]
   }
 }

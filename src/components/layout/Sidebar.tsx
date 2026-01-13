@@ -90,15 +90,19 @@ export function Sidebar() {
 
   // Handle link click - check navigation guard and close sidebar on mobile
   const handleLinkClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
-    // Check if navigation should be blocked
-    if (!checkNavigation(href)) {
-      e.preventDefault() // Block the navigation
-      return
+    // Always prevent default - we'll handle navigation ourselves
+    e.preventDefault()
+
+    // Check if navigation should be blocked (pass router.push as callback)
+    if (!checkNavigation(href, (url) => router.push(url))) {
+      return // Navigation blocked, dialog will show
     }
-    // Close mobile sidebar
+
+    // Navigation allowed - close mobile sidebar and navigate
     if (isMobile) {
       closeMobileSidebar()
     }
+    router.push(href)
   }
 
   if (isCollapsed && !isMobile) {
