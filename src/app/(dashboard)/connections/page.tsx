@@ -118,6 +118,8 @@ export default function ConnectionsPage() {
   const [disconnecting, setDisconnecting] = useState(false)
   const [savingName, setSavingName] = useState(false)
   const [connectionSuccess, setConnectionSuccess] = useState(false)
+  const [connectionFailed, setConnectionFailed] = useState(false)
+  const [connectionFailedMessage, setConnectionFailedMessage] = useState('')
   const [successConnectionName, setSuccessConnectionName] = useState('')
   const [alertModal, setAlertModal] = useState<{
     isOpen: boolean
@@ -166,14 +168,20 @@ export default function ConnectionsPage() {
               prev.map(c => c.id === updated.id ? updated : c)
             )
 
-            // If status changed to connected while modal is open, show success in modal
-            if (old.status !== 'connected' && updated.status === 'connected') {
-              if ((step === 2 || showQRModal) && currentSessionId === updated.id) {
+            // If status changed while modal is open, show appropriate state
+            if ((step === 2 || showQRModal) && currentSessionId === updated.id) {
+              if (old.status !== 'connected' && updated.status === 'connected') {
                 // Show success state in the current modal
                 setConnectionSuccess(true)
+                setConnectionFailed(false)
                 setSuccessConnectionName(updated.display_name || 'החיבור')
                 setQrCode('')
                 setLinkCode('')
+              } else if (updated.status === 'disconnected' && old.status !== 'disconnected') {
+                // Connection failed/disconnected
+                setConnectionFailed(true)
+                setConnectionFailedMessage('החיבור נכשל. נסה שוב.')
+                setConnectionSuccess(false)
               }
             }
           } else if (payload.eventType === 'DELETE') {
@@ -633,6 +641,8 @@ export default function ConnectionsPage() {
     setLinkCode('')
     setStep(1)
     setConnectionSuccess(false)
+    setConnectionFailed(false)
+    setConnectionFailedMessage('')
     setSuccessConnectionName('')
   }
 
@@ -1146,14 +1156,14 @@ export default function ConnectionsPage() {
           <div className={`${darkMode ? 'bg-[#1a2942]' : 'bg-white'} rounded-xl w-full max-w-md overflow-hidden`} dir="rtl">
             <div className={`p-4 md:p-6 border-b ${darkMode ? 'border-[#2a3f5f]' : 'border-gray-200'} flex items-center justify-between`}>
               <div className="flex items-center gap-2">
-                {!connectionSuccess && (
+                {!connectionSuccess && !connectionFailed && (
                   <ChevronRight
                     className={`w-5 h-5 cursor-pointer rotate-180 ${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'}`}
                     onClick={() => setStep(1)}
                   />
                 )}
                 <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                  {connectionSuccess ? 'החיבור הצליח!' : 'חיבור הטלפון'}
+                  {connectionSuccess ? 'החיבור הצליח!' : connectionFailed ? 'החיבור נכשל' : 'חיבור הטלפון'}
                 </h3>
               </div>
               <button onClick={resetModal} className={`${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'}`}>
@@ -1181,9 +1191,57 @@ export default function ConnectionsPage() {
                     סגור
                   </button>
                 </div>
+              ) : connectionFailed ? (
+                // Failed state
+                <div className="text-center py-6">
+                  <div className="w-20 h-20 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <X className="w-10 h-10 text-red-500" />
+                  </div>
+                  <h4 className={`text-xl font-semibold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                    החיבור נכשל
+                  </h4>
+                  <p className={`text-sm mb-6 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    {connectionFailedMessage || 'לא הצלחנו לחבר את המכשיר. נסה שוב.'}
+                  </p>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => {
+                        setConnectionFailed(false)
+                        setConnectionFailedMessage('')
+                        const connection = connections.find(c => c.id === currentSessionId)
+                        if (connection) {
+                          if (connectionMethod === 'scan' || connectionMethod === 'send') {
+                            fetchQRCode(connection.session_name)
+                          } else if (connectionMethod === 'code') {
+                            setLinkCode('')
+                            fetchLinkCode(connection.session_name)
+                          }
+                        }
+                      }}
+                      className="flex-1 px-4 py-3 bg-[#25D366] rounded-lg text-white font-medium hover:bg-[#20bd5a] transition-colors flex items-center justify-center gap-2"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                      נסה שוב
+                    </button>
+                    <button
+                      onClick={resetModal}
+                      className={`flex-1 px-4 py-3 border rounded-lg transition-colors ${darkMode ? 'border-[#2a3f5f] text-white hover:bg-[#2a3f5f]' : 'border-gray-200 text-gray-900 hover:bg-gray-50'}`}
+                    >
+                      סגור
+                    </button>
+                  </div>
+                </div>
               ) : (
-                // QR/Code state
+                // QR/Code state - waiting for scan
                 <>
+                  {/* Status indicator */}
+                  <div className={`flex items-center justify-center gap-2 mb-4 px-4 py-2 rounded-full ${darkMode ? 'bg-blue-500/10' : 'bg-blue-50'}`}>
+                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+                    <span className={`text-sm font-medium ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+                      ממתין לסריקה...
+                    </span>
+                  </div>
+
                   <p className={`text-sm mb-6 text-center ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>בצע את הפעולה הבאה</p>
 
                   {(connectionMethod === 'scan' || connectionMethod === 'send') && (
@@ -1191,8 +1249,9 @@ export default function ConnectionsPage() {
                       {qrCode ? (
                         <img src={`data:image/png;base64,${qrCode}`} alt="QR Code" className="w-full max-w-[200px] mx-auto" />
                       ) : (
-                        <div className="w-[200px] h-[200px] mx-auto flex items-center justify-center">
-                          <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+                        <div className="w-[200px] h-[200px] mx-auto flex flex-col items-center justify-center">
+                          <Loader2 className="w-8 h-8 animate-spin text-gray-400 mb-2" />
+                          <p className="text-sm text-gray-400">טוען קוד QR...</p>
                         </div>
                       )}
                     </div>
@@ -1215,7 +1274,7 @@ export default function ConnectionsPage() {
                         )}
                       </div>
                       {!linkCode && (
-                        <p className={`text-xs mt-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>ממתין לקוד מ-WhatsApp...</p>
+                        <p className={`text-xs mt-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>מקבל קוד מ-WhatsApp...</p>
                       )}
                     </div>
                   )}
@@ -1227,6 +1286,7 @@ export default function ConnectionsPage() {
                         if (!connection) return
 
                         if (connectionMethod === 'scan' || connectionMethod === 'send') {
+                          setQrCode('') // Clear to show loading
                           fetchQRCode(connection.session_name)
                         } else if (connectionMethod === 'code') {
                           setLinkCode('') // Clear current code to show loading
@@ -1258,9 +1318,9 @@ export default function ConnectionsPage() {
           <div className={`${darkMode ? 'bg-[#1a2942]' : 'bg-white'} rounded-xl p-6 w-full max-w-sm`} dir="rtl">
             <div className="flex items-center justify-between mb-4">
               <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                {connectionSuccess ? 'החיבור הצליח!' : 'סרוק את קוד ה-QR'}
+                {connectionSuccess ? 'החיבור הצליח!' : connectionFailed ? 'החיבור נכשל' : 'סרוק את קוד ה-QR'}
               </h3>
-              <button onClick={() => { setShowQRModal(false); setConnectionSuccess(false); setSuccessConnectionName(''); }} className={`${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'}`}>
+              <button onClick={() => { setShowQRModal(false); setConnectionSuccess(false); setConnectionFailed(false); setConnectionFailedMessage(''); setSuccessConnectionName(''); }} className={`${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'}`}>
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -1284,15 +1344,60 @@ export default function ConnectionsPage() {
                   סגור
                 </button>
               </div>
+            ) : connectionFailed ? (
+              // Failed state
+              <div className="text-center py-4">
+                <div className="w-20 h-20 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <X className="w-10 h-10 text-red-500" />
+                </div>
+                <h4 className={`text-xl font-semibold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                  החיבור נכשל
+                </h4>
+                <p className={`text-sm mb-6 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  {connectionFailedMessage || 'לא הצלחנו לחבר את המכשיר. נסה שוב.'}
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      setConnectionFailed(false)
+                      setConnectionFailedMessage('')
+                      const connection = connections.find(c => c.id === currentSessionId)
+                      if (connection) {
+                        setQrCode('')
+                        fetchQRCode(connection.session_name)
+                      }
+                    }}
+                    className="flex-1 px-4 py-3 bg-[#25D366] rounded-lg text-white font-medium hover:bg-[#20bd5a] transition-colors flex items-center justify-center gap-2"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    נסה שוב
+                  </button>
+                  <button
+                    onClick={() => { setShowQRModal(false); setConnectionFailed(false); setConnectionFailedMessage(''); }}
+                    className={`flex-1 px-4 py-3 border rounded-lg transition-colors ${darkMode ? 'border-[#2a3f5f] text-white hover:bg-[#2a3f5f]' : 'border-gray-200 text-gray-900 hover:bg-gray-50'}`}
+                  >
+                    סגור
+                  </button>
+                </div>
+              </div>
             ) : (
-              // QR state
+              // QR state - waiting for scan
               <>
+                {/* Status indicator */}
+                <div className={`flex items-center justify-center gap-2 mb-4 px-4 py-2 rounded-full ${darkMode ? 'bg-blue-500/10' : 'bg-blue-50'}`}>
+                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+                  <span className={`text-sm font-medium ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+                    ממתין לסריקה...
+                  </span>
+                </div>
+
                 <div className="bg-white rounded-xl p-4 mb-4">
                   {qrCode ? (
                     <img src={`data:image/png;base64,${qrCode}`} alt="QR Code" className="w-full" />
                   ) : (
-                    <div className="h-64 flex items-center justify-center">
-                      <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+                    <div className="h-64 flex flex-col items-center justify-center">
+                      <Loader2 className="w-8 h-8 animate-spin text-gray-400 mb-2" />
+                      <p className="text-sm text-gray-400">טוען קוד QR...</p>
                     </div>
                   )}
                 </div>
@@ -1302,7 +1407,10 @@ export default function ConnectionsPage() {
                 <button
                   onClick={() => {
                     const connection = connections.find(c => c.id === currentSessionId)
-                    if (connection) fetchQRCode(connection.session_name)
+                    if (connection) {
+                      setQrCode('') // Clear to show loading
+                      fetchQRCode(connection.session_name)
+                    }
                   }}
                   className={`w-full flex items-center justify-center gap-2 px-4 py-3 border rounded-lg transition-colors ${darkMode ? 'border-[#2a3f5f] text-white hover:bg-[#2a3f5f]' : 'border-gray-200 text-gray-900 hover:bg-gray-50'}`}
                 >
