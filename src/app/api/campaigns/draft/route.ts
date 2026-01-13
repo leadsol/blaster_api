@@ -40,6 +40,7 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
     const {
+      campaign_id, // For updating existing draft
       name,
       connection_id,
       message_template,
@@ -87,38 +88,69 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Create draft campaign
-    const { data: campaign, error: campaignError } = await supabase
-      .from('campaigns')
-      .insert({
-        user_id: user.id,
-        connection_id: finalConnectionId || null,
-        name,
-        message_template: message_template || '',
-        media_url: media_url || null,
-        media_type: media_type || null,
-        status: 'draft',
-        scheduled_at: scheduled_at || null,
-        started_at: null,
-        total_recipients: recipients.length,
-        delay_min,
-        delay_max,
-        pause_after_messages: pause_after_messages || null,
-        pause_seconds: pause_seconds || null,
-        new_list_name: new_list_name || null,
-        existing_list_id: existing_list_id || null,
-        multi_device: multi_device || false,
-        device_ids: device_ids.length > 0 ? device_ids : (finalConnectionId ? [finalConnectionId] : []),
-        message_variations: message_variations || [],
-        poll_question: poll_question || null,
-        poll_options: poll_options || null,
-        poll_multiple_answers: poll_multiple_answers || false,
-      })
-      .select()
-      .single()
+    const campaignData = {
+      user_id: user.id,
+      connection_id: finalConnectionId || null,
+      name,
+      message_template: message_template || '',
+      media_url: media_url || null,
+      media_type: media_type || null,
+      status: 'draft',
+      scheduled_at: scheduled_at || null,
+      started_at: null,
+      total_recipients: recipients.length,
+      delay_min,
+      delay_max,
+      pause_after_messages: pause_after_messages || null,
+      pause_seconds: pause_seconds || null,
+      new_list_name: new_list_name || null,
+      existing_list_id: existing_list_id || null,
+      multi_device: multi_device || false,
+      device_ids: device_ids.length > 0 ? device_ids : (finalConnectionId ? [finalConnectionId] : []),
+      message_variations: message_variations || [],
+      poll_question: poll_question || null,
+      poll_options: poll_options || null,
+      poll_multiple_answers: poll_multiple_answers || false,
+    }
+
+    let campaign
+    let campaignError
+
+    if (campaign_id) {
+      // Update existing draft campaign
+      const result = await supabase
+        .from('campaigns')
+        .update(campaignData)
+        .eq('id', campaign_id)
+        .eq('user_id', user.id) // Ensure user owns this campaign
+        .eq('status', 'draft') // Only update drafts
+        .select()
+        .single()
+
+      campaign = result.data
+      campaignError = result.error
+
+      if (campaign) {
+        // Delete old campaign messages before inserting new ones
+        await supabase
+          .from('campaign_messages')
+          .delete()
+          .eq('campaign_id', campaign_id)
+      }
+    } else {
+      // Create new draft campaign
+      const result = await supabase
+        .from('campaigns')
+        .insert(campaignData)
+        .select()
+        .single()
+
+      campaign = result.data
+      campaignError = result.error
+    }
 
     if (campaignError) {
-      console.error('Error creating draft campaign:', campaignError)
+      console.error('Error saving draft campaign:', campaignError)
       return NextResponse.json({
         error: 'שגיאה בשמירת הטיוטה',
         details: campaignError.message,

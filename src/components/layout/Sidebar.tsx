@@ -11,6 +11,7 @@ import { SupportModal } from '@/components/modals/SupportModal'
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useSidebar } from '@/contexts/SidebarContext'
+import { useNavigationGuard } from '@/contexts/NavigationGuardContext'
 
 interface Connection {
   id: string
@@ -24,6 +25,7 @@ export function Sidebar() {
   const router = useRouter()
   const { toggleDarkMode } = useTheme()
   const { isCollapsed, toggleSidebar, isMobile, closeMobileSidebar } = useSidebar()
+  const { checkNavigation, showConfirmDialog, confirmNavigation, cancelNavigation } = useNavigationGuard()
   const [showDropdown, setShowDropdown] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [showSupportModal, setShowSupportModal] = useState(false)
@@ -86,8 +88,14 @@ export function Sidebar() {
     router.push('/login')
   }
 
-  // Handle link click on mobile - close sidebar
-  const handleLinkClick = () => {
+  // Handle link click - check navigation guard and close sidebar on mobile
+  const handleLinkClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
+    // Check if navigation should be blocked
+    if (!checkNavigation(href)) {
+      e.preventDefault() // Block the navigation
+      return
+    }
+    // Close mobile sidebar
     if (isMobile) {
       closeMobileSidebar()
     }
@@ -118,7 +126,7 @@ export function Sidebar() {
 
       {/* Header with Logo and Arrow/Close */}
       <div className="flex items-center justify-between px-[30px] pt-[44px] pb-6">
-        <Link href="/" onClick={handleLinkClick}>
+        <Link href="/" onClick={(e) => handleLinkClick(e, '/')}>
           <img
             src="https://res.cloudinary.com/dimsgvsze/image/upload/v1768252823/9355f35c-2671-4e32-831f-21d63a876684_zjmk09.png"
             alt="LeadSol Logo"
@@ -208,7 +216,7 @@ export function Sidebar() {
         {/* צאט */}
         <Link
           href="/chat"
-          onClick={handleLinkClick}
+          onClick={(e) => handleLinkClick(e, '/chat')}
           className={cn(
             "flex items-center gap-3 h-[47px] px-3 rounded-[8px] mb-1 hover:bg-white/5 transition-colors",
             pathname === '/chat' && "bg-[rgba(0,67,224,0.31)]"
@@ -226,7 +234,7 @@ export function Sidebar() {
         {/* אנליטיקס */}
         <Link
           href="/analytics"
-          onClick={handleLinkClick}
+          onClick={(e) => handleLinkClick(e, '/analytics')}
           className={cn(
             "flex items-center gap-3 h-[47px] px-3 rounded-[8px] mb-1 hover:bg-white/5 transition-colors",
             pathname === '/analytics' && "bg-[rgba(0,67,224,0.31)]"
@@ -244,7 +252,7 @@ export function Sidebar() {
         {/* קמפיינים - ישר ליצירת קמפיין */}
         <Link
           href="/campaigns/new"
-          onClick={handleLinkClick}
+          onClick={(e) => handleLinkClick(e, '/campaigns/new')}
           className={cn(
             "flex items-center gap-3 h-[47px] px-3 rounded-[8px] mb-1 hover:bg-white/5 transition-colors",
             (pathname === '/campaigns/new' || pathname === '/campaigns') && "bg-[rgba(0,67,224,0.31)]"
@@ -266,7 +274,7 @@ export function Sidebar() {
         {/* רשימת לקוחות */}
         <Link
           href="/contacts"
-          onClick={handleLinkClick}
+          onClick={(e) => handleLinkClick(e, '/contacts')}
           className={cn(
             "flex items-center gap-3 h-[47px] px-3 rounded-[8px] mb-1 hover:bg-white/5 transition-colors",
             pathname === '/contacts' && "bg-[rgba(0,67,224,0.31)]"
@@ -281,7 +289,7 @@ export function Sidebar() {
         {/* חיבורים */}
         <Link
           href="/connections"
-          onClick={handleLinkClick}
+          onClick={(e) => handleLinkClick(e, '/connections')}
           className={cn(
             "flex items-center gap-3 h-[47px] px-3 rounded-[8px] mb-1 hover:bg-white/5 transition-colors",
             pathname === '/connections' && "bg-[rgba(0,67,224,0.31)]"
@@ -333,7 +341,7 @@ export function Sidebar() {
         {/* התראות */}
         <Link
           href="/notifications"
-          onClick={handleLinkClick}
+          onClick={(e) => handleLinkClick(e, '/notifications')}
           className={cn(
             "flex items-center gap-3 h-[47px] px-3 rounded-[8px] hover:bg-white/5 transition-colors",
             pathname === '/notifications' && "bg-[rgba(0,67,224,0.31)]"
@@ -355,7 +363,7 @@ export function Sidebar() {
         {/* מרכז משאבים */}
         <Link
           href="/resources"
-          onClick={handleLinkClick}
+          onClick={(e) => handleLinkClick(e, '/resources')}
           className={cn(
             "flex items-center gap-3 h-[47px] px-3 rounded-[8px] hover:bg-white/5 transition-colors",
             pathname === '/resources' && "bg-[rgba(0,67,224,0.31)]"
@@ -392,7 +400,7 @@ export function Sidebar() {
               <Link
                 href="/profile"
                 className="flex items-center gap-2 px-3 py-2 text-[#030733] hover:bg-[#F2F3F8] text-[14px]"
-                onClick={() => { setShowUserMenu(false); handleLinkClick(); }}
+                onClick={(e) => { setShowUserMenu(false); handleLinkClick(e, '/profile'); }}
               >
                 <svg width="16" height="16" viewBox="0 0 19 19" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <path d="M9.50065 1.58398C5.12839 1.58398 1.58398 5.12839 1.58398 9.50065C1.58398 13.8729 5.12839 17.4173 9.50065 17.4173C13.8729 17.4173 17.4173 13.8729 17.4173 9.50065C17.4173 5.12839 13.8729 1.58398 9.50065 1.58398Z" stroke="#030733" strokeLinecap="round" strokeLinejoin="round"/>
@@ -441,6 +449,18 @@ export function Sidebar() {
         subtitle="תצטרך להזין מחדש את פרטי ההתחברות"
         confirmText="כן אני בטוח"
         cancelText="לא, תחזור אחורה"
+        variant="danger"
+      />
+
+      {/* Navigation Guard Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showConfirmDialog}
+        onClose={cancelNavigation}
+        onConfirm={confirmNavigation}
+        title="יש נתונים שלא נשמרו"
+        subtitle="אם תעזוב את הדף הנתונים שהזנת יאבדו. האם להמשיך?"
+        confirmText="כן, עזוב"
+        cancelText="לא, הישאר"
         variant="danger"
       />
     </aside>

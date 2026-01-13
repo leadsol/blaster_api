@@ -31,6 +31,7 @@ import {
   FolderOpen
 } from 'lucide-react'
 import { useTheme } from '@/contexts/ThemeContext'
+import { useNavigationGuard } from '@/contexts/NavigationGuardContext'
 import * as XLSX from 'xlsx'
 import data from '@emoji-mart/data'
 import Picker from '@emoji-mart/react'
@@ -61,6 +62,7 @@ function NewCampaignContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { darkMode } = useTheme()
+  const { setBlocking } = useNavigationGuard()
   const [loading, setLoading] = useState(false)
   const [savingDraft, setSavingDraft] = useState(false)
 
@@ -281,14 +283,14 @@ function NewCampaignContent() {
   const PAGE_MARKER_KEY = 'campaign_page_active'
 
   // Function to check if form has meaningful data
-  const hasFormData = () => {
+  const hasFormData = (): boolean => {
     return (
       name.trim() !== '' ||
       messageTemplate.trim() !== '' ||
       recipients.length > 0 ||
       exclusionList.length > 0 ||
       attachedMedia.type !== null ||
-      (surveyQuestion && surveyQuestion.trim() !== '')
+      Boolean(surveyQuestion && surveyQuestion.trim() !== '')
     )
   }
 
@@ -439,13 +441,33 @@ function NewCampaignContent() {
     surveyQuestion, surveyOptions, allowMultipleAnswers, attachedMedia
   ])
 
+  // Update navigation guard blocking state when form data changes
+  useEffect(() => {
+    const shouldBlock = formModified && hasFormData()
+    setBlocking(shouldBlock, () => {
+      // This callback is called when user confirms navigation
+      clearDraftFromStorage()
+      sessionStorage.removeItem(PAGE_MARKER_KEY)
+    })
+    // Cleanup - unblock when component unmounts
+    return () => {
+      setBlocking(false)
+    }
+  }, [formModified, name, messageTemplate, recipients.length, setBlocking])
+
   // Clear data when leaving page (browser navigation/close)
   // Set page marker when page mounts to detect refresh vs navigation
   useEffect(() => {
     // Set marker that we're on this page
     sessionStorage.setItem(PAGE_MARKER_KEY, 'true')
 
-    const handleBeforeUnload = () => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      // Show browser warning if form has data
+      if (formModified && hasFormData()) {
+        e.preventDefault()
+        e.returnValue = '' // Chrome requires returnValue to be set
+        return ''
+      }
       // Clear the page marker when leaving
       // If user is refreshing, the page will set the marker again when it loads
       sessionStorage.removeItem(PAGE_MARKER_KEY)
@@ -457,7 +479,7 @@ function NewCampaignContent() {
       // Also clear when component unmounts (internal navigation)
       sessionStorage.removeItem(PAGE_MARKER_KEY)
     }
-  }, [])
+  }, [formModified])
 
   // Handle navigation away from page (internal links)
   const handleNavigateAway = (url: string) => {
@@ -613,6 +635,30 @@ function NewCampaignContent() {
       setSelectedDevices(campaign.device_ids)
     }
 
+    // Message variations
+    if (campaign.message_variations && campaign.message_variations.length > 0) {
+      setHasMessageVariations(true)
+      setMessageVariations(campaign.message_variations)
+      setVariationCount(campaign.message_variations.length)
+    }
+
+    // Delay settings
+    if (campaign.delay_min) setDelayMin(campaign.delay_min)
+    if (campaign.delay_max) setDelayMax(campaign.delay_max)
+
+    // Poll/Survey
+    if (campaign.poll_question && campaign.poll_options) {
+      setSurveyQuestion(campaign.poll_question)
+      setSurveyOptions(campaign.poll_options)
+      setAllowMultipleAnswers(campaign.poll_multiple_answers || false)
+      setAttachedMedia({
+        type: 'poll',
+        file: null,
+        url: null,
+        name: 'סקר'
+      })
+    }
+
     // Media
     if (campaign.media_url && campaign.media_type) {
       setAttachedMedia({
@@ -724,6 +770,30 @@ function NewCampaignContent() {
     if (campaign.multi_device && campaign.device_ids && campaign.device_ids.length > 0) {
       setHasMultiDevice(true)
       setSelectedDevices(campaign.device_ids)
+    }
+
+    // Message variations
+    if (campaign.message_variations && campaign.message_variations.length > 0) {
+      setHasMessageVariations(true)
+      setMessageVariations(campaign.message_variations)
+      setVariationCount(campaign.message_variations.length)
+    }
+
+    // Delay settings
+    if (campaign.delay_min) setDelayMin(campaign.delay_min)
+    if (campaign.delay_max) setDelayMax(campaign.delay_max)
+
+    // Poll/Survey
+    if (campaign.poll_question && campaign.poll_options) {
+      setSurveyQuestion(campaign.poll_question)
+      setSurveyOptions(campaign.poll_options)
+      setAllowMultipleAnswers(campaign.poll_multiple_answers || false)
+      setAttachedMedia({
+        type: 'poll',
+        file: null,
+        url: null,
+        name: 'סקר'
+      })
     }
 
     // Media
@@ -1180,6 +1250,7 @@ function NewCampaignContent() {
       }
 
       const draftData = {
+        campaign_id: editCampaignId || undefined, // Pass campaign ID for update
         name,
         connection_id: selectedConnection || undefined,
         message_template: effectiveMessageTemplate || '',
