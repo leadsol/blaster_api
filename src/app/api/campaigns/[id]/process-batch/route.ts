@@ -125,11 +125,11 @@ async function handler(
     }
 
     // Schedule messages using the DIFFERENCE between their scheduled_delay_seconds
-    // This preserves the original spacing pattern regardless of when the campaign is resumed
-    // Example: if message 6 has delay 300s and message 7 has delay 340s,
-    // message 7 will be sent 40 seconds AFTER message 6
+    // This preserves the original spacing pattern (10-60 seconds between messages)
+    // Example: if message 1 has delay 35s and message 2 has delay 78s,
+    // message 2 will be sent 43 seconds AFTER message 1 (78-35=43)
     let scheduledCount = 0
-    let cumulativeDelay = 0 // Accumulates the actual delay from NOW
+    let cumulativeDelay = 5 // Start with small initial delay
 
     for (let i = 0; i < pendingMessages.length; i++) {
       const message = pendingMessages[i]
@@ -138,27 +138,26 @@ async function handler(
       let delayFromNow: number
 
       if (i === 0) {
-        // First message: send after small random delay (5-15 seconds)
-        delayFromNow = 5 + Math.floor(Math.random() * 10)
+        // First message: send after initial delay
+        delayFromNow = cumulativeDelay
       } else {
         // Calculate the spacing between this message and the previous one
-        // This is the ORIGINAL spacing that was calculated during campaign creation
+        // This is the ORIGINAL spacing that was calculated during campaign creation (10-60 seconds)
         const prevDelay = pendingMessages[i - 1].scheduled_delay_seconds || 0
         const spacing = currentDelay - prevDelay
 
-        // Add the spacing to cumulative delay
-        delayFromNow = cumulativeDelay + spacing
+        // Accumulate the spacing
+        cumulativeDelay += spacing
+        delayFromNow = cumulativeDelay
       }
 
       // Add small randomness (0-3 seconds) to avoid exact patterns
       delayFromNow += Math.floor(Math.random() * 3)
 
-      // Ensure minimum 1 second delay
-      delayFromNow = Math.max(1, delayFromNow)
+      // Ensure minimum 5 second delay between messages
+      delayFromNow = Math.max(5, delayFromNow)
 
-      cumulativeDelay = delayFromNow
-
-      console.log(`[PROCESS-BATCH] Scheduling message ${message.id} with ${delayFromNow}s delay from now (original scheduled_delay: ${currentDelay}s)`)
+      console.log(`[PROCESS-BATCH] Scheduling message ${message.id} with ${delayFromNow}s delay from now (original scheduled_delay: ${currentDelay}s, spacing from prev: ${i > 0 ? currentDelay - (pendingMessages[i-1].scheduled_delay_seconds || 0) : 0}s)`)
 
       const result = await scheduleMessage(campaignId, message.id, delayFromNow)
       if (result) {
