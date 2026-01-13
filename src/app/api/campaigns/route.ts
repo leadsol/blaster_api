@@ -181,7 +181,11 @@ export async function POST(request: NextRequest) {
 
     if (campaignError) {
       console.error('Error creating campaign:', campaignError)
-      return NextResponse.json({ error: 'Failed to create campaign' }, { status: 500 })
+      return NextResponse.json({
+        error: 'Failed to create campaign',
+        details: campaignError.message,
+        code: campaignError.code
+      }, { status: 500 })
     }
 
     // Create campaign messages for each recipient
