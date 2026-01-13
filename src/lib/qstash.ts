@@ -15,11 +15,16 @@ export const isQStashConfigured = (): boolean => {
 
 // Helper to get the app URL for QStash callbacks
 export const getAppUrl = (): string => {
-  // In production, use VERCEL_URL or NEXT_PUBLIC_APP_URL
+  // Use NEXT_PUBLIC_APP_URL for stable production URL
+  // VERCEL_URL changes per deployment and won't work for callbacks
+  if (process.env.NEXT_PUBLIC_APP_URL && process.env.NEXT_PUBLIC_APP_URL !== 'http://localhost:3000') {
+    return process.env.NEXT_PUBLIC_APP_URL
+  }
+  // Fallback to VERCEL_URL for preview deployments
   if (process.env.VERCEL_URL) {
     return `https://${process.env.VERCEL_URL}`
   }
-  return process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+  return 'http://localhost:3000'
 }
 
 // Schedule a message to be sent after a delay
