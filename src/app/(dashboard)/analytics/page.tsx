@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import {
   Users, Loader2, Search, ChevronDown, Clock,
   Trash2, Copy, Download, MessageCircle,
-  SlidersHorizontal, CheckCheck, Check, X, StopCircle, Play
+  SlidersHorizontal, CheckCheck, Check, X, StopCircle, Play, Pencil
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useTheme } from '@/contexts/ThemeContext'
@@ -83,6 +83,7 @@ function AnalyticsContent() {
     { key: 'scheduled', label: 'מתוזמן' },
     { key: 'failed', label: 'נכשל' },
     { key: 'running', label: 'פעיל' },
+    { key: 'draft', label: 'טיוטה' },
     { key: 'all', label: 'הכל' },
   ]
 
@@ -340,6 +341,24 @@ function AnalyticsContent() {
 
     // Redirect to new campaign page with duplicate parameter
     router.push(`/campaigns/new?duplicate=${selectedCampaign.id}`)
+  }
+
+  const handleEditCampaign = () => {
+    if (!selectedCampaign) return
+
+    // Only drafts can be edited
+    if (selectedCampaign.status !== 'draft') {
+      setAlertModal({
+        isOpen: true,
+        title: 'לא ניתן לערוך קמפיין זה',
+        message: 'ניתן לערוך רק קמפיינים בסטטוס טיוטה',
+        type: 'warning'
+      })
+      return
+    }
+
+    // Redirect to new campaign page with edit parameter
+    router.push(`/campaigns/new?edit=${selectedCampaign.id}`)
   }
 
   const handleCancelCampaign = () => {
@@ -1182,6 +1201,16 @@ function AnalyticsContent() {
                   >
                     <Copy size={22} className="text-white" />
                   </button>
+                  {/* Edit button - only visible for draft campaigns */}
+                  {selectedCampaign?.status === 'draft' && (
+                    <button
+                      onClick={handleEditCampaign}
+                      className="bg-[#F59E0B] rounded-[9px] p-2.5 flex items-center justify-center hover:opacity-80 transition-opacity"
+                      title="ערוך טיוטה"
+                    >
+                      <Pencil size={22} className="text-white" />
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
