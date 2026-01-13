@@ -1027,7 +1027,7 @@ function AnalyticsContent() {
                   </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto min-h-[400px]">
+                <div className="overflow-y-auto max-h-[500px]">
                   {!selectedCampaign ? (
                     <div className="flex items-center justify-center h-[280px]">
                       <p className={`text-[14px] ${darkMode ? 'text-white' : 'text-[#030733]'}`}>אנא בחר קמפיין לצפייה בנתונים</p>
