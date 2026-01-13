@@ -41,7 +41,7 @@ interface Recipient {
 
 interface Connection {
   id: string
-  name: string
+  session_name: string
   phone_number: string | null
   display_name: string | null
   status: 'connected' | 'disconnected' | 'connecting' | 'qr_pending'
@@ -712,7 +712,7 @@ function AnalyticsContent() {
                 <div className="text-right flex-1">
                   <p className={`text-[13px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
                     {selectedConnection
-                      ? `אתה מחובר וצופה בנתונים עבור "${selectedConnection.display_name || selectedConnection.name}"`
+                      ? `אתה מחובר וצופה בנתונים עבור "${selectedConnection.display_name || selectedConnection.session_name}"`
                       : 'לא נבחר חיבור'
                     }
                   </p>
