@@ -360,32 +360,31 @@ export default function CampaignSummaryPage() {
     if (totalMessages === 0) return null
 
     // System constants
-    const AVG_DELAY_BETWEEN_MESSAGES = 35 // Average of 10-60 seconds
-    const MESSAGES_PER_BATCH = 30
-    const SYSTEM_BATCH_BREAKS = [30 * 60, 60 * 60, 90 * 60] // in seconds
-    const MAX_MESSAGES_PER_DAY = 90
+    const BASE_MESSAGES_PER_DAY = 90
+    const BONUS_PER_VARIATION = 10 // Each variation adds 10 more messages per day
+    const AVG_DELAY_BETWEEN_MESSAGES = (campaign?.delay_min || 3) + (campaign?.delay_max || 10) // Average delay
 
-    let totalSeconds = 0
+    // Calculate daily limit with variations bonus
+    const variationCount = campaign?.message_variations?.length || 1
+    const variationBonus = variationCount > 1 ? (variationCount - 1) * BONUS_PER_VARIATION : 0
+    const messagesPerDayPerDevice = BASE_MESSAGES_PER_DAY + variationBonus
 
-    // Time for sending messages with delays
-    totalSeconds += totalMessages * AVG_DELAY_BETWEEN_MESSAGES
+    // Multiple devices multiply the daily capacity
+    const deviceCount = campaign?.multi_device && campaign?.device_ids ? campaign.device_ids.length : 1
+    const totalDailyLimit = messagesPerDayPerDevice * deviceCount
 
-    // System batch breaks (every 30 messages)
-    const systemBatches = Math.floor(totalMessages / MESSAGES_PER_BATCH)
-    for (let i = 0; i < systemBatches && i < SYSTEM_BATCH_BREAKS.length; i++) {
-      totalSeconds += SYSTEM_BATCH_BREAKS[i]
-    }
+    // Calculate days needed
+    const daysNeeded = Math.ceil(totalMessages / totalDailyLimit)
 
-    // User-defined pauses (in addition to system)
+    // Calculate time for today's messages
+    const messagesForToday = Math.min(totalMessages, totalDailyLimit)
+    let totalSeconds = messagesForToday * AVG_DELAY_BETWEEN_MESSAGES
+
+    // User-defined pauses
     if (campaign?.pause_after_messages && campaign?.pause_seconds) {
-      const userPauseCount = Math.floor(totalMessages / campaign.pause_after_messages)
+      const userPauseCount = Math.floor(messagesForToday / campaign.pause_after_messages)
       totalSeconds += userPauseCount * campaign.pause_seconds
     }
-
-    // Calculate days if exceeds daily limit (considering multiple devices)
-    const deviceCount = campaign?.multi_device && campaign?.device_ids ? campaign.device_ids.length : 1
-    const totalDailyLimit = MAX_MESSAGES_PER_DAY * deviceCount
-    const daysNeeded = Math.ceil(totalMessages / totalDailyLimit)
 
     // Format the duration
     const hours = Math.floor(totalSeconds / 3600)
@@ -393,14 +392,17 @@ export default function CampaignSummaryPage() {
 
     let result = ''
     if (daysNeeded > 1) {
-      result = `כ-${daysNeeded} ימים`
+      // Multiple days - show days and explain today's portion
+      result = `כ-${daysNeeded} ימים (${messagesForToday} הודעות היום, השאר מחר)`
     } else if (hours > 0) {
       result = `כ-${hours} שעות`
       if (minutes > 0) {
         result += ` ו-${minutes} דקות`
       }
-    } else {
+    } else if (minutes > 0) {
       result = `כ-${minutes} דקות`
+    } else {
+      result = 'פחות מדקה'
     }
 
     return result
@@ -434,7 +436,7 @@ export default function CampaignSummaryPage() {
       {/* Main Layout - Two columns */}
       <div className="flex gap-6">
         {/* Right side - Recipients Table */}
-        <div className={`flex-1 rounded-[15px] p-6 ${darkMode ? 'bg-[#0a1155]' : 'bg-white'}`}>
+        <div className={`flex-1 rounded-[15px] p-6 flex flex-col max-h-[calc(100vh-180px)] ${darkMode ? 'bg-[#0a1155]' : 'bg-white'}`}>
           {/* Search and Actions */}
           <div className="flex items-center justify-between gap-4 mb-6">
             {/* Search */}
@@ -474,7 +476,7 @@ export default function CampaignSummaryPage() {
           </div>
 
           {/* Table */}
-          <div className="overflow-x-auto">
+          <div className="overflow-auto flex-1">
             <table className="w-full">
               <thead>
                 <tr className={`border-b ${darkMode ? 'border-white/10' : 'border-gray-200'}`}>
@@ -850,16 +852,6 @@ export default function CampaignSummaryPage() {
                   <span className="font-normal">{calculateEstimatedDuration()}</span>
                 </p>
               )}
-
-              <p>
-                <span className="font-semibold">סטטוס - </span>
-                <span className="font-normal">
-                  {campaign?.status === 'running' ? 'פועל' :
-                   campaign?.status === 'scheduled' ? 'מתוזמן' :
-                   campaign?.status === 'completed' ? 'הושלם' :
-                   campaign?.status === 'paused' ? 'מושהה' : 'טיוטה'}
-                </span>
-              </p>
             </div>
           </div>
 
