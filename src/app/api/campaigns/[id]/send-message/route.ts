@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/server'
 import { waha } from '@/lib/waha'
 import { verifySignatureAppRouter } from '@upstash/qstash/nextjs'
 
@@ -18,7 +18,8 @@ async function handler(
       return NextResponse.json({ error: 'Missing messageId' }, { status: 400 })
     }
 
-    const supabase = await createClient()
+    // Use admin client since QStash callbacks don't have user session
+    const supabase = createAdminClient()
 
     // Get the message
     const { data: message, error: messageError } = await supabase

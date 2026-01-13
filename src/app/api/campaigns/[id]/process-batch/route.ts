@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { scheduleMessage, scheduleNextBatch, isQStashConfigured } from '@/lib/qstash'
 import { verifySignatureAppRouter } from '@upstash/qstash/nextjs'
 
@@ -16,7 +16,8 @@ async function handler(
   const { id: campaignId } = await params
 
   try {
-    const supabase = await createClient()
+    // Use admin client since QStash callbacks don't have user session
+    const supabase = createAdminClient()
 
     // Get campaign
     const { data: campaign, error: campaignError } = await supabase
