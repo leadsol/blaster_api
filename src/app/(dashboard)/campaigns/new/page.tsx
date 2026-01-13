@@ -2923,32 +2923,33 @@ function NewCampaignContent() {
             </div>
           )}
         </div>
-        {/* Save Draft Button - Below iPhone */}
-        <button
-          onClick={handleSaveDraft}
-          disabled={savingDraft || loading}
-          className="mt-3 w-full h-[44px] bg-gray-500 hover:bg-gray-600 text-white rounded-[10px] text-[14px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-        >
-          {savingDraft ? (
-            <>
-              <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
-              </svg>
-              <span>שומר טיוטה...</span>
-            </>
-          ) : (
-            <>
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/>
-                <polyline points="17 21 17 13 7 13 7 21"/>
-                <polyline points="7 3 7 8 15 8"/>
-              </svg>
-              <span>שמירת טיוטה</span>
-            </>
-          )}
-        </button>
       </div>
+
+      {/* Save Draft Button - Fixed position below iPhone area (Desktop only) */}
+      <button
+        onClick={handleSaveDraft}
+        disabled={savingDraft || loading}
+        className="hidden xl:flex fixed left-[10px] 2xl:left-[20px] bottom-[20px] 2xl:bottom-[30px] w-[300px] 2xl:w-[350px] h-[44px] bg-gray-500 hover:bg-gray-600 text-white rounded-[10px] text-[14px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed items-center justify-center gap-2 z-20"
+      >
+        {savingDraft ? (
+          <>
+            <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+            </svg>
+            <span>שומר טיוטה...</span>
+          </>
+        ) : (
+          <>
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/>
+              <polyline points="17 21 17 13 7 13 7 21"/>
+              <polyline points="7 3 7 8 15 8"/>
+            </svg>
+            <span>שמירת טיוטה</span>
+          </>
+        )}
+      </button>
 
       {/* Main Content - Hidden on mobile when step 2 */}
       <div className={`${mobileStep === 2 ? 'hidden lg:flex' : 'flex'} flex-col lg:flex-row gap-3 lg:gap-[15px] 2xl:gap-[20px] xl:ml-[320px] 2xl:ml-[380px] lg:flex-1 lg:min-h-0`}>
