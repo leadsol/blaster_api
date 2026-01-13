@@ -7,8 +7,35 @@ export async function POST(request: NextRequest) {
     const supabase = await createClient()
 
     const { data: { user }, error: authError } = await supabase.auth.getUser()
+
     if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return NextResponse.json({ error: 'Unauthorized', authError: authError?.message }, { status: 401 })
+    }
+
+    // Ensure user profile exists (handle case where trigger didn't create it)
+    const { data: existingProfile } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('id', user.id)
+      .single()
+
+    if (!existingProfile) {
+      // Create profile if it doesn't exist
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .insert({
+          id: user.id,
+          email: user.email || '',
+          full_name: user.user_metadata?.full_name || user.user_metadata?.name || null
+        })
+
+      if (profileError) {
+        console.error('Error creating profile:', profileError)
+        return NextResponse.json({
+          error: 'שגיאה ביצירת פרופיל משתמש',
+          details: profileError.message
+        }, { status: 500 })
+      }
     }
 
     const body = await request.json()
