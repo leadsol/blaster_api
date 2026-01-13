@@ -276,8 +276,9 @@ function NewCampaignContent() {
   const [formModified, setFormModified] = useState(false)
   const [isInitialLoad, setIsInitialLoad] = useState(true)
 
-  // LocalStorage key for draft data
+  // SessionStorage key for draft data (clears when tab closes, persists on refresh)
   const DRAFT_STORAGE_KEY = 'campaign_draft_data'
+  const PAGE_MARKER_KEY = 'campaign_page_active'
 
   // Function to check if form has meaningful data
   const hasFormData = () => {
@@ -335,19 +336,29 @@ function NewCampaignContent() {
     }
 
     try {
-      localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draftData))
+      sessionStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draftData))
     } catch (e) {
-      console.error('Failed to save draft to localStorage:', e)
+      console.error('Failed to save draft to sessionStorage:', e)
     }
   }
 
-  // Load draft from localStorage
+  // Load draft from sessionStorage (only on page refresh, not navigation)
   const loadDraftFromStorage = () => {
     if (editCampaignId || duplicateCampaignId) return false // Don't load drafts when editing
 
     try {
-      const saved = localStorage.getItem(DRAFT_STORAGE_KEY)
+      // Check if we're coming from a refresh (marker was set before beforeunload cleared it)
+      // If marker is not present, it means we navigated away and came back - clear old data
+      const wasOnPage = sessionStorage.getItem(PAGE_MARKER_KEY) === 'true'
+
+      const saved = sessionStorage.getItem(DRAFT_STORAGE_KEY)
       if (!saved) return false
+
+      // If we weren't on this page before (navigated from elsewhere), clear the draft
+      if (!wasOnPage) {
+        sessionStorage.removeItem(DRAFT_STORAGE_KEY)
+        return false
+      }
 
       const draftData = JSON.parse(saved)
 
@@ -355,7 +366,7 @@ function NewCampaignContent() {
       const savedAt = new Date(draftData.savedAt)
       const hoursSinceSave = (Date.now() - savedAt.getTime()) / (1000 * 60 * 60)
       if (hoursSinceSave > 24) {
-        localStorage.removeItem(DRAFT_STORAGE_KEY)
+        sessionStorage.removeItem(DRAFT_STORAGE_KEY)
         return false
       }
 
@@ -392,7 +403,7 @@ function NewCampaignContent() {
 
       return true
     } catch (e) {
-      console.error('Failed to load draft from localStorage:', e)
+      console.error('Failed to load draft from sessionStorage:', e)
       return false
     }
   }
@@ -400,9 +411,9 @@ function NewCampaignContent() {
   // Clear draft from localStorage
   const clearDraftFromStorage = () => {
     try {
-      localStorage.removeItem(DRAFT_STORAGE_KEY)
+      sessionStorage.removeItem(DRAFT_STORAGE_KEY)
     } catch (e) {
-      console.error('Failed to clear draft from localStorage:', e)
+      console.error('Failed to clear draft from sessionStorage:', e)
     }
   }
 
@@ -428,25 +439,33 @@ function NewCampaignContent() {
     surveyQuestion, surveyOptions, allowMultipleAnswers, attachedMedia
   ])
 
-  // Warn user before leaving page with unsaved changes (browser refresh/close)
+  // Clear data when leaving page (browser navigation/close)
+  // Set page marker when page mounts to detect refresh vs navigation
   useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (formModified && hasFormData()) {
-        e.preventDefault()
-        e.returnValue = '' // Chrome requires returnValue to be set
-        return ''
-      }
+    // Set marker that we're on this page
+    sessionStorage.setItem(PAGE_MARKER_KEY, 'true')
+
+    const handleBeforeUnload = () => {
+      // Clear the page marker when leaving
+      // If user is refreshing, the page will set the marker again when it loads
+      sessionStorage.removeItem(PAGE_MARKER_KEY)
     }
 
     window.addEventListener('beforeunload', handleBeforeUnload)
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
-  }, [formModified, name, messageTemplate, recipients, exclusionList, attachedMedia, surveyQuestion])
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      // Also clear when component unmounts (internal navigation)
+      sessionStorage.removeItem(PAGE_MARKER_KEY)
+    }
+  }, [])
 
   // Handle navigation away from page (internal links)
   const handleNavigateAway = (url: string) => {
     if (formModified && hasFormData()) {
       setLeavePagePopup({ show: true, pendingUrl: url })
     } else {
+      // Clear sessionStorage when navigating away without draft
+      clearDraftFromStorage()
       router.push(url)
     }
   }
@@ -473,7 +492,7 @@ function NewCampaignContent() {
     if (!editCampaignId && !duplicateCampaignId) {
       const hasDraft = loadDraftFromStorage()
       if (hasDraft) {
-        console.log('Loaded campaign draft from localStorage')
+        console.log('Loaded campaign draft from sessionStorage')
       }
     }
 
@@ -1207,7 +1226,11 @@ function NewCampaignContent() {
       // Success - clear local draft and redirect to analytics
       clearDraftFromStorage()
       setFormModified(false)
-      router.push('/analytics')
+      setSavingDraft(false)
+      setAlertPopup({ show: true, message: 'הטיוטה נשמרה בהצלחה' })
+      setTimeout(() => {
+        router.push('/analytics')
+      }, 1000)
 
     } catch (error) {
       console.error('Error saving draft:', error)
