@@ -31,6 +31,13 @@ export async function updateSession(request: NextRequest) {
   const publicPaths = ['/login', '/register', '/forgot-password', '/reset-password', '/verify-email', '/auth']
   const isPublicPath = publicPaths.some(path => request.nextUrl.pathname.startsWith(path))
 
+  // API paths that handle their own authentication (QStash callbacks, webhooks, etc.)
+  const selfAuthenticatedApiPaths = [
+    '/api/campaigns/',  // Campaign processing endpoints (QStash callbacks)
+    '/api/waha/webhook', // WAHA webhook
+  ]
+  const isSelfAuthenticatedApi = selfAuthenticatedApiPaths.some(path => request.nextUrl.pathname.startsWith(path))
+
   let user = null
   try {
     const { data } = await supabase.auth.getUser()
@@ -41,7 +48,8 @@ export async function updateSession(request: NextRequest) {
   }
 
   // Protected routes - redirect to login if not authenticated
-  if (!user && !isPublicPath) {
+  // Skip redirect for self-authenticated API paths (they handle auth themselves)
+  if (!user && !isPublicPath && !isSelfAuthenticatedApi) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
