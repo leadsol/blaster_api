@@ -56,10 +56,10 @@ export async function PATCH(
     const body = await request.json()
     const { action } = body
 
-    // Get current campaign status
+    // Get current campaign status and timing info
     const { data: campaign, error: fetchError } = await supabase
       .from('campaigns')
-      .select('status')
+      .select('status, started_at, estimated_duration, paused_at')
       .eq('id', campaignId)
       .single()
 
@@ -69,6 +69,7 @@ export async function PATCH(
 
     let newStatus: string
     let message: string
+    let updateData: Record<string, unknown> = {}
 
     switch (action) {
       case 'pause':
@@ -77,6 +78,8 @@ export async function PATCH(
         }
         newStatus = 'paused'
         message = 'Campaign paused'
+        // Save the time when campaign was paused for countdown calculation
+        updateData.paused_at = new Date().toISOString()
         break
 
       case 'resume':
@@ -85,6 +88,19 @@ export async function PATCH(
         }
         newStatus = 'running'
         message = 'Campaign resumed'
+
+        // Calculate new started_at based on how much time was remaining when paused
+        // This allows the countdown to continue correctly from where it left off
+        if (campaign.paused_at && campaign.started_at && campaign.estimated_duration) {
+          const originalStartTime = new Date(campaign.started_at).getTime()
+          const pausedTime = new Date(campaign.paused_at).getTime()
+          const elapsedBeforePause = pausedTime - originalStartTime // ms that passed before pause
+          const now = Date.now()
+          // New started_at = now - elapsedBeforePause
+          // This makes the countdown think the campaign started "elapsedBeforePause" ms ago
+          updateData.started_at = new Date(now - elapsedBeforePause).toISOString()
+          updateData.paused_at = null // Clear paused_at
+        }
 
         // Trigger processing again - use stable app URL
         const resumeAppUrl = process.env.NEXT_PUBLIC_APP_URL && process.env.NEXT_PUBLIC_APP_URL !== 'http://localhost:3000'
@@ -127,7 +143,7 @@ export async function PATCH(
 
     const { error: updateError } = await supabase
       .from('campaigns')
-      .update({ status: newStatus })
+      .update({ status: newStatus, ...updateData })
       .eq('id', campaignId)
 
     if (updateError) {

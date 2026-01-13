@@ -23,6 +23,7 @@ interface CampaignStats {
   status: string
   scheduled_at?: string
   started_at?: string
+  paused_at?: string // When campaign was paused (for countdown)
   total_recipients: number
   estimated_duration?: number // in seconds
 }
@@ -213,9 +214,10 @@ function AnalyticsContent() {
     }
   }, [selectedCampaign])
 
-  // Countdown timer for running campaigns
+  // Countdown timer for running/paused campaigns
   useEffect(() => {
-    if (!selectedCampaign || selectedCampaign.status !== 'running' || !selectedCampaign.started_at || !selectedCampaign.estimated_duration) {
+    const isRunningOrPaused = selectedCampaign?.status === 'running' || selectedCampaign?.status === 'paused'
+    if (!selectedCampaign || !isRunningOrPaused || !selectedCampaign.started_at || !selectedCampaign.estimated_duration) {
       setCountdown(null)
       return
     }
@@ -223,8 +225,17 @@ function AnalyticsContent() {
     const calculateCountdown = () => {
       const startTime = new Date(selectedCampaign.started_at!).getTime()
       const estimatedEndTime = startTime + (selectedCampaign.estimated_duration! * 1000)
-      const now = Date.now()
-      const remainingMs = estimatedEndTime - now
+
+      // For paused campaigns, calculate remaining time from when it was paused
+      // For running campaigns, calculate from current time
+      let referenceTime: number
+      if (selectedCampaign.status === 'paused' && selectedCampaign.paused_at) {
+        referenceTime = new Date(selectedCampaign.paused_at).getTime()
+      } else {
+        referenceTime = Date.now()
+      }
+
+      const remainingMs = estimatedEndTime - referenceTime
 
       if (remainingMs <= 0) {
         setCountdown('מסיים...')
@@ -243,10 +254,13 @@ function AnalyticsContent() {
     }
 
     calculateCountdown()
-    const interval = setInterval(calculateCountdown, 1000)
 
-    return () => clearInterval(interval)
-  }, [selectedCampaign?.id, selectedCampaign?.status, selectedCampaign?.started_at, selectedCampaign?.estimated_duration])
+    // Only set interval for running campaigns (paused campaigns show frozen time)
+    if (selectedCampaign.status === 'running') {
+      const interval = setInterval(calculateCountdown, 1000)
+      return () => clearInterval(interval)
+    }
+  }, [selectedCampaign?.id, selectedCampaign?.status, selectedCampaign?.started_at, selectedCampaign?.estimated_duration, selectedCampaign?.paused_at])
 
   const loadData = async () => {
     setLoading(true)
@@ -272,10 +286,10 @@ function AnalyticsContent() {
       setSelectedConnection(connectedOne)
     }
 
-    // Load campaigns with failed_count, started_at, and estimated_duration
+    // Load campaigns with failed_count, started_at, paused_at and estimated_duration
     const { data: campaignsData, error } = await supabase
       .from('campaigns')
-      .select('id, name, status, sent_count, delivered_count, read_count, reply_count, failed_count, total_recipients, scheduled_at, started_at, estimated_duration')
+      .select('id, name, status, sent_count, delivered_count, read_count, reply_count, failed_count, total_recipients, scheduled_at, started_at, paused_at, estimated_duration')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
 
@@ -969,12 +983,15 @@ function AnalyticsContent() {
               {/* Send Time Card - Compact with countdown */}
               <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[10px] px-4 py-3`}>
                 <h3 className={`text-[14px] font-semibold mb-1 text-right ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
-                  {selectedCampaign?.status === 'running' && countdown ? 'זמן שנותר' : 'זמן שליחת הקמפיין'}
+                  {(selectedCampaign?.status === 'running' || selectedCampaign?.status === 'paused') && countdown
+                    ? (selectedCampaign?.status === 'paused' ? 'זמן שנותר (מושהה)' : 'זמן שנותר')
+                    : 'זמן שליחת הקמפיין'}
                 </h3>
-                {selectedCampaign?.status === 'running' && countdown ? (
+                {(selectedCampaign?.status === 'running' || selectedCampaign?.status === 'paused') && countdown ? (
                   <>
-                    <p className={`text-[20px] font-bold text-right ${darkMode ? 'text-[#0043E0]' : 'text-[#0043E0]'}`} dir="ltr">
+                    <p className={`text-[20px] font-bold text-right ${selectedCampaign?.status === 'paused' ? 'text-[#F59E0B]' : 'text-[#0043E0]'}`} dir="ltr">
                       {countdown}
+                      {selectedCampaign?.status === 'paused' && <span className="text-[12px] mr-2">⏸</span>}
                     </p>
                     <p className={`text-[11px] text-right ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
                       סה״כ: {formatDurationShort(selectedCampaign.estimated_duration)}
