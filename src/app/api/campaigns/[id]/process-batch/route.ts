@@ -124,31 +124,46 @@ async function handler(
       return NextResponse.json({ success: true, completed: true })
     }
 
-    // Get the campaign start time to calculate relative delays
-    const campaignStartTime = campaign.started_at ? new Date(campaign.started_at).getTime() : Date.now()
+    // Get the first message's scheduled_delay to use as baseline
+    // This is important for resumed campaigns - we calculate delays RELATIVE to first pending message
+    const firstMessageDelay = pendingMessages[0].scheduled_delay_seconds || 0
     const now = Date.now()
 
     // Schedule each message using the pre-calculated scheduled_delay_seconds
     let scheduledCount = 0
     let lastScheduledDelay = 0
+    let cumulativeDelay = 0
 
-    for (const message of pendingMessages) {
+    for (let i = 0; i < pendingMessages.length; i++) {
+      const message = pendingMessages[i]
       // Use the pre-calculated delay from campaign creation
       // This includes the 10-60 second random delays AND the 30min/1hr/1.5hr bulk pauses
       const scheduledDelaySeconds = message.scheduled_delay_seconds || 0
 
-      // Calculate when this message should be sent relative to campaign start
-      const targetTime = campaignStartTime + (scheduledDelaySeconds * 1000)
+      // Calculate delay RELATIVE to the first pending message
+      // For resumed campaigns, this ensures we start from "now" not from original start time
+      const relativeDelay = scheduledDelaySeconds - firstMessageDelay
 
-      // Calculate delay from NOW
-      let delayFromNow = Math.max(1, Math.ceil((targetTime - now) / 1000))
+      // Add minimum spacing between messages (10-60 seconds random if this is first batch)
+      let delayFromNow: number
+      if (i === 0) {
+        // First message starts with small random delay (1-5 seconds)
+        delayFromNow = 1 + Math.floor(Math.random() * 5)
+      } else {
+        // Subsequent messages use the difference in their scheduled delays
+        // This preserves the original spacing pattern including bulk pauses
+        const prevDelay = pendingMessages[i - 1].scheduled_delay_seconds || 0
+        const spacing = scheduledDelaySeconds - prevDelay
+        delayFromNow = cumulativeDelay + Math.max(10, spacing) // minimum 10 seconds between messages
+      }
 
       // Add small randomness (0-3 seconds) to avoid exact patterns
       delayFromNow += Math.floor(Math.random() * 3)
 
+      cumulativeDelay = delayFromNow
       lastScheduledDelay = delayFromNow
 
-      console.log(`[PROCESS-BATCH] Scheduling message ${message.id} with ${delayFromNow}s delay from now (scheduled_delay: ${scheduledDelaySeconds}s)`)
+      console.log(`[PROCESS-BATCH] Scheduling message ${message.id} with ${delayFromNow}s delay from now (original scheduled_delay: ${scheduledDelaySeconds}s, relative: ${relativeDelay}s)`)
 
       const result = await scheduleMessage(campaignId, message.id, delayFromNow)
       if (result) {
