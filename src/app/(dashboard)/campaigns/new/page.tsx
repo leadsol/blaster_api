@@ -62,6 +62,7 @@ function NewCampaignContent() {
   const searchParams = useSearchParams()
   const { darkMode } = useTheme()
   const [loading, setLoading] = useState(false)
+  const [savingDraft, setSavingDraft] = useState(false)
 
   // Edit mode
   const editCampaignId = searchParams.get('edit')
@@ -1078,6 +1079,140 @@ function NewCampaignContent() {
       console.error('Error saving campaign:', error)
       setAlertPopup({ show: true, message: isEditMode ? 'שגיאה בעדכון הקמפיין' : 'שגיאה ביצירת הקמפיין' })
       setLoading(false)
+    }
+  }
+
+  // Handle save as draft - minimal validation, saves to DB with draft status
+  const handleSaveDraft = async () => {
+    // Only require campaign name for draft
+    if (!name.trim()) {
+      setAlertPopup({ show: true, message: 'יש להזין שם לקמפיין כדי לשמור כטיוטה' })
+      return
+    }
+
+    setSavingDraft(true)
+
+    try {
+      // Calculate pause duration in seconds based on selected time unit
+      let pauseSeconds = 0
+      if (hasPause && pauseDuration > 0) {
+        switch (pauseTimeUnit) {
+          case 'seconds':
+            pauseSeconds = pauseDuration
+            break
+          case 'minutes':
+            pauseSeconds = pauseDuration * 60
+            break
+          case 'hours':
+            pauseSeconds = pauseDuration * 3600
+            break
+        }
+      }
+
+      // Build scheduled_at if scheduling is enabled
+      let scheduled_at: string | null = null
+      if (hasScheduling && scheduleDate && scheduleTime) {
+        scheduled_at = new Date(`${scheduleDate}T${scheduleTime}`).toISOString()
+      }
+
+      // Use variations if enabled
+      const effectiveMessageTemplate = hasMessageVariations && messageVariations.length > 0
+        ? messageVariations[0]
+        : messageTemplate
+
+      // Upload media if present
+      let mediaUrl: string | null = null
+      let mediaType: string | null = null
+
+      if (attachedMedia.type && attachedMedia.type !== 'poll' && attachedMedia.file) {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        const userId = user?.id || 'anonymous'
+
+        const mediaTypeFolder = attachedMedia.type
+        const safeFileName = attachedMedia.file.name
+          .replace(/[^a-zA-Z0-9._\u0590-\u05FF-]/g, '_')
+          .substring(0, 50)
+        const uniqueId = `${Date.now()}_${Math.random().toString(36).substring(7)}`
+        const fileName = `${uniqueId}_${safeFileName}`
+        const filePath = `campaigns/${userId}/${mediaTypeFolder}/${fileName}`
+
+        const contentType = attachedMedia.type === 'audio'
+          ? 'audio/ogg; codecs=opus'
+          : attachedMedia.file.type || 'application/octet-stream'
+
+        const { error: uploadError } = await supabase.storage
+          .from('leadsol_storage')
+          .upload(filePath, attachedMedia.file, {
+            contentType,
+            upsert: false
+          })
+
+        if (!uploadError) {
+          const { data: signedUrlData } = await supabase.storage
+            .from('leadsol_storage')
+            .createSignedUrl(filePath, 60 * 60 * 24 * 7)
+
+          if (signedUrlData?.signedUrl) {
+            mediaUrl = signedUrlData.signedUrl
+            mediaType = attachedMedia.type
+          }
+        }
+      }
+
+      const draftData = {
+        name,
+        connection_id: selectedConnection || undefined,
+        message_template: effectiveMessageTemplate || '',
+        scheduled_at,
+        delay_min: delayMin,
+        delay_max: delayMax,
+        pause_after_messages: hasPause ? pauseAfterMessages : null,
+        pause_seconds: hasPause ? pauseSeconds : null,
+        new_list_name: createNewList ? newListName : null,
+        existing_list_id: assignToExistingList ? selectedExistingList : null,
+        multi_device: hasMultiDevice,
+        device_ids: hasMultiDevice ? selectedDevices : selectedConnection ? [selectedConnection] : [],
+        recipients: recipients.map(r => ({
+          phone: r.phone,
+          name: r.name,
+          variables: r.variables || {}
+        })),
+        exclusion_list: exclusionList.map(e => e.phone),
+        has_message_variations: hasMessageVariations,
+        message_variations: hasMessageVariations ? messageVariations : [],
+        variation_count: hasMessageVariations ? variationCount : 0,
+        media_url: mediaUrl,
+        media_type: mediaType,
+        poll_question: attachedMedia.type === 'poll' && attachedMedia.poll ? attachedMedia.poll.question : null,
+        poll_options: attachedMedia.type === 'poll' && attachedMedia.poll ? attachedMedia.poll.options : null,
+        poll_multiple_answers: attachedMedia.type === 'poll' && attachedMedia.poll ? attachedMedia.poll.multipleAnswers : false,
+        is_draft: true // Signal to API this is a draft save
+      }
+
+      const response = await fetch('/api/campaigns/draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(draftData)
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        setAlertPopup({ show: true, message: data.error || 'שגיאה בשמירת הטיוטה' })
+        setSavingDraft(false)
+        return
+      }
+
+      // Success - clear local draft and redirect to analytics
+      clearDraftFromStorage()
+      setFormModified(false)
+      router.push('/analytics')
+
+    } catch (error) {
+      console.error('Error saving draft:', error)
+      setAlertPopup({ show: true, message: 'שגיאה בשמירת הטיוטה' })
+      setSavingDraft(false)
     }
   }
 
@@ -2788,6 +2923,31 @@ function NewCampaignContent() {
             </div>
           )}
         </div>
+        {/* Save Draft Button - Below iPhone */}
+        <button
+          onClick={handleSaveDraft}
+          disabled={savingDraft || loading}
+          className="mt-3 w-full h-[44px] bg-gray-500 hover:bg-gray-600 text-white rounded-[10px] text-[14px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+        >
+          {savingDraft ? (
+            <>
+              <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+              </svg>
+              <span>שומר טיוטה...</span>
+            </>
+          ) : (
+            <>
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/>
+                <polyline points="17 21 17 13 7 13 7 21"/>
+                <polyline points="7 3 7 8 15 8"/>
+              </svg>
+              <span>שמירת טיוטה</span>
+            </>
+          )}
+        </button>
       </div>
 
       {/* Main Content - Hidden on mobile when step 2 */}
