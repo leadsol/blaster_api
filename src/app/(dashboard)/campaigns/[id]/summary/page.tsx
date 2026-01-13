@@ -17,6 +17,7 @@ interface CampaignMessage {
   sender_phone?: string // The phone number of the sender
   status: string
   variables?: Record<string, string>
+  scheduled_delay_seconds?: number // Pre-calculated delay from campaign start
 }
 
 interface Campaign {
@@ -130,6 +131,12 @@ export default function CampaignSummaryPage() {
       console.error('Error loading messages:', messagesError)
     } else {
       setMessages(messagesData || [])
+      // Debug: Log first and last message to check scheduled_delay_seconds
+      if (messagesData && messagesData.length > 0) {
+        console.log('First message scheduled_delay_seconds:', messagesData[0]?.scheduled_delay_seconds)
+        console.log('Last message scheduled_delay_seconds:', messagesData[messagesData.length - 1]?.scheduled_delay_seconds)
+        console.log('Total messages:', messagesData.length)
+      }
 
       // Extract dynamic columns from first message with variables
       if (messagesData && messagesData.length > 0) {
@@ -354,7 +361,7 @@ export default function CampaignSummaryPage() {
     }
   }
 
-  // Calculate estimated campaign duration
+  // Calculate estimated campaign duration using pre-calculated delays
   const calculateEstimatedDuration = () => {
     const totalMessages = messages.length
     if (totalMessages === 0) return null
@@ -362,7 +369,6 @@ export default function CampaignSummaryPage() {
     // System constants
     const BASE_MESSAGES_PER_DAY = 90
     const BONUS_PER_VARIATION = 10 // Each variation adds 10 more messages per day
-    const AVG_DELAY_BETWEEN_MESSAGES = (campaign?.delay_min || 3) + (campaign?.delay_max || 10) // Average delay
 
     // Calculate daily limit with variations bonus
     const variationCount = campaign?.message_variations?.length || 1
@@ -376,14 +382,34 @@ export default function CampaignSummaryPage() {
     // Calculate days needed
     const daysNeeded = Math.ceil(totalMessages / totalDailyLimit)
 
-    // Calculate time for today's messages
+    // Get today's messages
     const messagesForToday = Math.min(totalMessages, totalDailyLimit)
-    let totalSeconds = messagesForToday * AVG_DELAY_BETWEEN_MESSAGES
 
-    // User-defined pauses
-    if (campaign?.pause_after_messages && campaign?.pause_seconds) {
-      const userPauseCount = Math.floor(messagesForToday / campaign.pause_after_messages)
-      totalSeconds += userPauseCount * campaign.pause_seconds
+    // Use pre-calculated delay from the last message of today's batch
+    // This is the EXACT time since delays were randomly generated during campaign creation
+    const lastTodayMessage = messages[messagesForToday - 1]
+    let totalSeconds = lastTodayMessage?.scheduled_delay_seconds || 0
+
+    console.log('Duration calc - messagesForToday:', messagesForToday, 'lastTodayMessage index:', messagesForToday - 1)
+    console.log('Duration calc - lastTodayMessage scheduled_delay_seconds:', lastTodayMessage?.scheduled_delay_seconds)
+    console.log('Duration calc - totalSeconds:', totalSeconds)
+
+    // If no pre-calculated delays exist (old campaigns), fall back to estimation
+    if (!totalSeconds) {
+      console.log('Duration calc - using fallback estimation (no pre-calculated delays)')
+      const MESSAGES_PER_BULK = 30
+      const DELAY_MIN = campaign?.delay_min || 10
+      const DELAY_MAX = campaign?.delay_max || 60
+      const BULK_PAUSE_SECONDS = [30 * 60, 60 * 60, 90 * 60]
+
+      const avgDelay = (DELAY_MIN + DELAY_MAX) / 2
+      totalSeconds = messagesForToday * avgDelay
+
+      const numberOfBulks = Math.floor(messagesForToday / MESSAGES_PER_BULK)
+      for (let i = 0; i < numberOfBulks; i++) {
+        const pauseIndex = Math.min(i, BULK_PAUSE_SECONDS.length - 1)
+        totalSeconds += BULK_PAUSE_SECONDS[pauseIndex]
+      }
     }
 
     // Format the duration
@@ -395,12 +421,12 @@ export default function CampaignSummaryPage() {
       // Multiple days - show days and explain today's portion
       result = `כ-${daysNeeded} ימים (${messagesForToday} הודעות היום, השאר מחר)`
     } else if (hours > 0) {
-      result = `כ-${hours} שעות`
+      result = `${hours} שעות`
       if (minutes > 0) {
         result += ` ו-${minutes} דקות`
       }
     } else if (minutes > 0) {
-      result = `כ-${minutes} דקות`
+      result = `${minutes} דקות`
     } else {
       result = 'פחות מדקה'
     }

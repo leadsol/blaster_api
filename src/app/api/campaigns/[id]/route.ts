@@ -139,6 +139,8 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: campaignId } = await params
+  console.log('=== PUT /api/campaigns/[id] called ===')
+  console.log('Campaign ID:', campaignId)
 
   try {
     const supabase = await createClient()
@@ -285,19 +287,39 @@ export async function PUT(
       return NextResponse.json({ error: 'Failed to update campaign' }, { status: 500 })
     }
 
-    // Delete old messages
-    const { error: deleteError } = await supabase
+    // Delete old messages - first count how many exist
+    const { data: existingMessages } = await supabase
       .from('campaign_messages')
-      .delete()
+      .select('id')
       .eq('campaign_id', campaignId)
 
-    if (deleteError) {
-      console.error('Error deleting old messages:', deleteError)
-      return NextResponse.json({ error: 'Failed to delete old messages' }, { status: 500 })
+    console.log('Found', existingMessages?.length || 0, 'existing messages to delete for campaign:', campaignId)
+
+    if (existingMessages && existingMessages.length > 0) {
+      const messageIds = existingMessages.map(m => m.id)
+      const { error: deleteError } = await supabase
+        .from('campaign_messages')
+        .delete()
+        .in('id', messageIds)
+
+      if (deleteError) {
+        console.error('Error deleting old messages:', deleteError)
+        return NextResponse.json({ error: 'Failed to delete old messages' }, { status: 500 })
+      }
+      console.log('Successfully deleted', messageIds.length, 'messages')
     }
 
-    // Create new campaign messages
-    const campaignMessages = filteredRecipients.map((recipient: { phone: string; name?: string; variables?: Record<string, string> }) => {
+    // Create new campaign messages with pre-calculated delays
+    // Constants for timing
+    const MESSAGES_PER_BULK = 30
+    const BULK_PAUSE_SECONDS = [
+      30 * 60,    // After 1st bulk (30 messages): 30 minutes
+      60 * 60,    // After 2nd bulk (60 messages): 1 hour
+      90 * 60,    // After 3rd bulk (90 messages): 1.5 hours - and this repeats
+    ]
+
+    let cumulativeDelaySeconds = 0
+    const campaignMessages = filteredRecipients.map((recipient: { phone: string; name?: string; variables?: Record<string, string> }, index: number) => {
       let messageContent = message_template
       messageContent = messageContent.replace(/\{שם\}/g, recipient.name || '')
       messageContent = messageContent.replace(/\{טלפון\}/g, recipient.phone)
@@ -308,6 +330,18 @@ export async function PUT(
         })
       }
 
+      // Calculate random delay for this message
+      const messageDelay = Math.floor(Math.random() * (delay_max - delay_min + 1)) + delay_min
+      cumulativeDelaySeconds += messageDelay
+
+      // Add bulk pause if this message completes a bulk (every 30 messages)
+      const messageNumber = index + 1
+      if (messageNumber > 0 && messageNumber % MESSAGES_PER_BULK === 0) {
+        const bulkIndex = Math.floor(messageNumber / MESSAGES_PER_BULK) - 1
+        const pauseIndex = Math.min(bulkIndex, BULK_PAUSE_SECONDS.length - 1)
+        cumulativeDelaySeconds += BULK_PAUSE_SECONDS[pauseIndex]
+      }
+
       return {
         campaign_id: campaignId,
         phone: recipient.phone,
@@ -315,9 +349,11 @@ export async function PUT(
         message_content: messageContent.trim(),
         variables: recipient.variables || {},
         status: 'pending',
+        scheduled_delay_seconds: cumulativeDelaySeconds,
       }
     })
 
+    console.log('Inserting', campaignMessages.length, 'new messages')
     const { error: messagesError } = await supabase
       .from('campaign_messages')
       .insert(campaignMessages)
@@ -326,6 +362,13 @@ export async function PUT(
       console.error('Error creating campaign messages:', messagesError)
       return NextResponse.json({ error: 'Failed to update campaign messages' }, { status: 500 })
     }
+
+    // Verify message count after insert
+    const { data: finalMessages, count: finalCount } = await supabase
+      .from('campaign_messages')
+      .select('id', { count: 'exact' })
+      .eq('campaign_id', campaignId)
+    console.log('Final message count after insert:', finalCount, 'rows:', finalMessages?.length)
 
     // Get updated campaign
     const { data: updatedCampaign } = await supabase

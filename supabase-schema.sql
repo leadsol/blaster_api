@@ -132,6 +132,11 @@ CREATE TABLE IF NOT EXISTS campaign_messages (
 
 -- Migration: Add sender info columns to campaign_messages (run this if table already exists)
 -- ALTER TABLE campaign_messages ADD COLUMN IF NOT EXISTS sent_message_content TEXT;
+
+-- Migration: Add scheduled timing columns to campaign_messages
+-- Run this SQL to add the scheduled_delay_seconds column:
+ALTER TABLE campaign_messages ADD COLUMN IF NOT EXISTS scheduled_delay_seconds INTEGER DEFAULT 0;
+-- ALTER TABLE campaign_messages ADD COLUMN IF NOT EXISTS scheduled_send_at TIMESTAMPTZ;
 -- ALTER TABLE campaign_messages ADD COLUMN IF NOT EXISTS sender_session_name TEXT;
 -- ALTER TABLE campaign_messages ADD COLUMN IF NOT EXISTS sender_phone TEXT;
 
@@ -283,6 +288,9 @@ CREATE POLICY "Users can create own campaign messages" ON campaign_messages FOR 
   EXISTS (SELECT 1 FROM campaigns WHERE campaigns.id = campaign_messages.campaign_id AND campaigns.user_id = auth.uid())
 );
 CREATE POLICY "Users can update own campaign messages" ON campaign_messages FOR UPDATE USING (
+  EXISTS (SELECT 1 FROM campaigns WHERE campaigns.id = campaign_messages.campaign_id AND campaigns.user_id = auth.uid())
+);
+CREATE POLICY "Users can delete own campaign messages" ON campaign_messages FOR DELETE USING (
   EXISTS (SELECT 1 FROM campaigns WHERE campaigns.id = campaign_messages.campaign_id AND campaigns.user_id = auth.uid())
 );
 

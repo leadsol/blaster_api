@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 
 // POST - Save campaign as draft
 export async function POST(request: NextRequest) {
+  console.log('=== POST /api/campaigns/draft called ===')
   try {
     const supabase = await createClient()
 
@@ -132,10 +133,12 @@ export async function POST(request: NextRequest) {
 
       if (campaign) {
         // Delete old campaign messages before inserting new ones
-        await supabase
+        console.log('Draft: Deleting old messages for campaign:', campaign_id)
+        const { error: deleteError, count: deletedCount } = await supabase
           .from('campaign_messages')
           .delete()
           .eq('campaign_id', campaign_id)
+        console.log('Draft: Delete result - error:', deleteError, 'count:', deletedCount)
       }
     } else {
       // Create new draft campaign
@@ -168,7 +171,16 @@ export async function POST(request: NextRequest) {
       })
 
       if (filteredRecipients.length > 0) {
-        const campaignMessages = filteredRecipients.map((recipient: { phone: string; name?: string; variables?: Record<string, string> }) => {
+        // Constants for timing
+        const MESSAGES_PER_BULK = 30
+        const BULK_PAUSE_SECONDS = [
+          30 * 60,    // After 1st bulk (30 messages): 30 minutes
+          60 * 60,    // After 2nd bulk (60 messages): 1 hour
+          90 * 60,    // After 3rd bulk (90 messages): 1.5 hours - and this repeats
+        ]
+
+        let cumulativeDelaySeconds = 0
+        const campaignMessages = filteredRecipients.map((recipient: { phone: string; name?: string; variables?: Record<string, string> }, index: number) => {
           // Replace variables in message template
           let messageContent = message_template || ''
           messageContent = messageContent.replace(/\{שם\}/g, recipient.name || '')
@@ -181,6 +193,18 @@ export async function POST(request: NextRequest) {
             })
           }
 
+          // Calculate random delay for this message
+          const messageDelay = Math.floor(Math.random() * (delay_max - delay_min + 1)) + delay_min
+          cumulativeDelaySeconds += messageDelay
+
+          // Add bulk pause if this message completes a bulk (every 30 messages)
+          const messageNumber = index + 1
+          if (messageNumber > 0 && messageNumber % MESSAGES_PER_BULK === 0) {
+            const bulkIndex = Math.floor(messageNumber / MESSAGES_PER_BULK) - 1
+            const pauseIndex = Math.min(bulkIndex, BULK_PAUSE_SECONDS.length - 1)
+            cumulativeDelaySeconds += BULK_PAUSE_SECONDS[pauseIndex]
+          }
+
           return {
             campaign_id: campaign.id,
             phone: recipient.phone,
@@ -188,6 +212,7 @@ export async function POST(request: NextRequest) {
             message_content: messageContent.trim(),
             variables: recipient.variables || {},
             status: 'pending',
+            scheduled_delay_seconds: cumulativeDelaySeconds,
           }
         })
 
