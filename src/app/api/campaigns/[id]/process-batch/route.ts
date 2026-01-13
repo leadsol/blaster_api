@@ -37,15 +37,71 @@ async function handler(
       return NextResponse.json({ success: true, skipped: true, reason: `Campaign status is ${campaign.status}` })
     }
 
-    // If campaign is draft/scheduled, update to running
+    // If campaign is draft/scheduled/paused, update to running
+    // IMPORTANT: When resuming a paused campaign, we need to recalculate scheduled_delay_seconds
+    // to maintain proper spacing from NOW, not from the original start time
     if (campaign.status === 'draft' || campaign.status === 'scheduled') {
       await supabase
         .from('campaigns')
         .update({
           status: 'running',
-          started_at: campaign.started_at || new Date().toISOString()
+          started_at: new Date().toISOString()
         })
         .eq('id', campaignId)
+
+      // Update campaign object with new started_at
+      campaign.started_at = new Date().toISOString()
+    } else if (campaign.status === 'paused' || campaign.status === 'running') {
+      // For resumed campaigns, reset started_at to NOW so delays are calculated from current time
+      const newStartedAt = new Date().toISOString()
+      await supabase
+        .from('campaigns')
+        .update({
+          status: 'running',
+          started_at: newStartedAt
+        })
+        .eq('id', campaignId)
+
+      // Also recalculate scheduled_delay_seconds for remaining pending messages
+      // Get the first pending message to use as baseline
+      const { data: firstPending } = await supabase
+        .from('campaign_messages')
+        .select('scheduled_delay_seconds')
+        .eq('campaign_id', campaignId)
+        .eq('status', 'pending')
+        .order('scheduled_delay_seconds', { ascending: true })
+        .limit(1)
+        .single()
+
+      if (firstPending) {
+        const baselineDelay = firstPending.scheduled_delay_seconds || 0
+
+        // Get all pending messages to recalculate their delays
+        const { data: allPending } = await supabase
+          .from('campaign_messages')
+          .select('id, scheduled_delay_seconds')
+          .eq('campaign_id', campaignId)
+          .eq('status', 'pending')
+          .order('scheduled_delay_seconds', { ascending: true })
+
+        if (allPending && allPending.length > 0) {
+          // Update each message's scheduled_delay_seconds to be relative to the first one
+          // This preserves the spacing pattern while starting from 0 (NOW)
+          for (const msg of allPending) {
+            const originalDelay = msg.scheduled_delay_seconds || 0
+            const newDelay = originalDelay - baselineDelay
+
+            await supabase
+              .from('campaign_messages')
+              .update({ scheduled_delay_seconds: newDelay })
+              .eq('id', msg.id)
+          }
+
+          console.log(`[PROCESS-BATCH] Recalculated delays for ${allPending.length} pending messages (baseline was ${baselineDelay}s)`)
+        }
+      }
+
+      campaign.started_at = newStartedAt
     }
 
     // Calculate daily limit
@@ -124,46 +180,32 @@ async function handler(
       return NextResponse.json({ success: true, completed: true })
     }
 
-    // Get the first message's scheduled_delay to use as baseline
-    // This is important for resumed campaigns - we calculate delays RELATIVE to first pending message
-    const firstMessageDelay = pendingMessages[0].scheduled_delay_seconds || 0
+    // Get the campaign start time to calculate relative delays
+    // After recalculation above, started_at is set to NOW for resumed campaigns
+    const campaignStartTime = campaign.started_at ? new Date(campaign.started_at).getTime() : Date.now()
     const now = Date.now()
 
     // Schedule each message using the pre-calculated scheduled_delay_seconds
     let scheduledCount = 0
     let lastScheduledDelay = 0
-    let cumulativeDelay = 0
 
-    for (let i = 0; i < pendingMessages.length; i++) {
-      const message = pendingMessages[i]
-      // Use the pre-calculated delay from campaign creation
+    for (const message of pendingMessages) {
+      // Use the pre-calculated delay from campaign creation (or recalculated for resumed campaigns)
       // This includes the 10-60 second random delays AND the 30min/1hr/1.5hr bulk pauses
       const scheduledDelaySeconds = message.scheduled_delay_seconds || 0
 
-      // Calculate delay RELATIVE to the first pending message
-      // For resumed campaigns, this ensures we start from "now" not from original start time
-      const relativeDelay = scheduledDelaySeconds - firstMessageDelay
+      // Calculate when this message should be sent relative to campaign start
+      const targetTime = campaignStartTime + (scheduledDelaySeconds * 1000)
 
-      // Add minimum spacing between messages (10-60 seconds random if this is first batch)
-      let delayFromNow: number
-      if (i === 0) {
-        // First message starts with small random delay (1-5 seconds)
-        delayFromNow = 1 + Math.floor(Math.random() * 5)
-      } else {
-        // Subsequent messages use the difference in their scheduled delays
-        // This preserves the original spacing pattern including bulk pauses
-        const prevDelay = pendingMessages[i - 1].scheduled_delay_seconds || 0
-        const spacing = scheduledDelaySeconds - prevDelay
-        delayFromNow = cumulativeDelay + Math.max(10, spacing) // minimum 10 seconds between messages
-      }
+      // Calculate delay from NOW
+      let delayFromNow = Math.max(1, Math.ceil((targetTime - now) / 1000))
 
       // Add small randomness (0-3 seconds) to avoid exact patterns
       delayFromNow += Math.floor(Math.random() * 3)
 
-      cumulativeDelay = delayFromNow
       lastScheduledDelay = delayFromNow
 
-      console.log(`[PROCESS-BATCH] Scheduling message ${message.id} with ${delayFromNow}s delay from now (original scheduled_delay: ${scheduledDelaySeconds}s, relative: ${relativeDelay}s)`)
+      console.log(`[PROCESS-BATCH] Scheduling message ${message.id} with ${delayFromNow}s delay from now (scheduled_delay: ${scheduledDelaySeconds}s)`)
 
       const result = await scheduleMessage(campaignId, message.id, delayFromNow)
       if (result) {
