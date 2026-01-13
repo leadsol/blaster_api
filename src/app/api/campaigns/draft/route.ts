@@ -224,6 +224,15 @@ export async function POST(request: NextRequest) {
           console.error('Error creating draft campaign messages:', messagesError)
           // Don't rollback - draft is still saved, just without messages
         }
+
+        // Update campaign with estimated duration (total time to send all messages)
+        const estimatedDuration = cumulativeDelaySeconds
+        await supabase
+          .from('campaigns')
+          .update({ estimated_duration: estimatedDuration })
+          .eq('id', campaign.id)
+
+        campaign.estimated_duration = estimatedDuration
       }
     }
 

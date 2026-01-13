@@ -22,7 +22,9 @@ interface CampaignStats {
   failed_count?: number
   status: string
   scheduled_at?: string
+  started_at?: string
   total_recipients: number
+  estimated_duration?: number // in seconds
 }
 
 interface Recipient {
@@ -31,6 +33,7 @@ interface Recipient {
   name?: string
   status: 'pending' | 'sent' | 'delivered' | 'read' | 'replied' | 'failed' | 'cancelled'
   sent_at?: string
+  created_at?: string
   message_content?: string
   sent_message_content?: string // The actual message that was sent (after variation selection)
   sender_session_name?: string // The session/device name that sent this message
@@ -66,6 +69,7 @@ function AnalyticsContent() {
   const [connections, setConnections] = useState<Connection[]>([])
   const [selectedConnection, setSelectedConnection] = useState<Connection | null>(null)
   const [showConnectionDropdown, setShowConnectionDropdown] = useState(false)
+  const [countdown, setCountdown] = useState<string | null>(null)
 
   // Modal states
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -106,7 +110,7 @@ function AnalyticsContent() {
           table: 'campaigns'
         },
         (payload) => {
-          console.log('Campaign realtime update:', payload)
+          console.log('[Analytics] Campaign realtime update:', payload.eventType, payload.new)
 
           if (payload.eventType === 'INSERT') {
             const newCampaign = payload.new as CampaignStats
@@ -130,47 +134,63 @@ function AnalyticsContent() {
           }
         }
       )
-      .subscribe()
+      .subscribe((status) => {
+        console.log('[Analytics] Campaigns channel status:', status)
+      })
 
     return () => {
       supabase.removeChannel(campaignsChannel)
     }
   }, [selectedCampaign])
 
+  // Helper function to sort recipients by send order (most recent first)
+  const sortRecipients = (recipientsList: Recipient[]): Recipient[] => {
+    return [...recipientsList].sort((a, b) => {
+      // Sort by sent_at first (most recent sent at top), then by created_at
+      const aTime = a.sent_at || a.created_at || ''
+      const bTime = b.sent_at || b.created_at || ''
+      return new Date(bTime).getTime() - new Date(aTime).getTime()
+    })
+  }
+
   // Realtime subscription for recipients (campaign_messages) of selected campaign
   useEffect(() => {
     if (!selectedCampaign) return
 
     const supabase = createClient()
+    const campaignId = selectedCampaign.id
 
     const messagesChannel = supabase
-      .channel(`messages-${selectedCampaign.id}`)
+      .channel(`messages-${campaignId}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'campaign_messages',
-          filter: `campaign_id=eq.${selectedCampaign.id}`
+          filter: `campaign_id=eq.${campaignId}`
         },
         (payload) => {
           console.log('Message realtime update:', payload)
 
           if (payload.eventType === 'INSERT') {
             const newRecipient = payload.new as Recipient
-            setRecipients(prev => [newRecipient, ...prev])
+            setRecipients(prev => sortRecipients([...prev, newRecipient]))
           } else if (payload.eventType === 'UPDATE') {
             const updated = payload.new as Recipient
-            setRecipients(prev =>
-              prev.map(r => r.id === updated.id ? updated : r)
-            )
+            setRecipients(prev => {
+              const newList = prev.map(r => r.id === updated.id ? updated : r)
+              return sortRecipients(newList)
+            })
           } else if (payload.eventType === 'DELETE') {
             const deletedId = (payload.old as { id: string }).id
             setRecipients(prev => prev.filter(r => r.id !== deletedId))
           }
         }
       )
-      .subscribe()
+      .subscribe((status) => {
+        console.log(`[Analytics] Messages channel status for ${campaignId}:`, status)
+      })
 
     return () => {
       supabase.removeChannel(messagesChannel)
@@ -192,6 +212,41 @@ function AnalyticsContent() {
       loadRecipients(selectedCampaign.id)
     }
   }, [selectedCampaign])
+
+  // Countdown timer for running campaigns
+  useEffect(() => {
+    if (!selectedCampaign || selectedCampaign.status !== 'running' || !selectedCampaign.started_at || !selectedCampaign.estimated_duration) {
+      setCountdown(null)
+      return
+    }
+
+    const calculateCountdown = () => {
+      const startTime = new Date(selectedCampaign.started_at!).getTime()
+      const estimatedEndTime = startTime + (selectedCampaign.estimated_duration! * 1000)
+      const now = Date.now()
+      const remainingMs = estimatedEndTime - now
+
+      if (remainingMs <= 0) {
+        setCountdown('מסיים...')
+        return
+      }
+
+      const hours = Math.floor(remainingMs / 3600000)
+      const minutes = Math.floor((remainingMs % 3600000) / 60000)
+      const seconds = Math.floor((remainingMs % 60000) / 1000)
+
+      if (hours > 0) {
+        setCountdown(`${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`)
+      } else {
+        setCountdown(`${minutes}:${seconds.toString().padStart(2, '0')}`)
+      }
+    }
+
+    calculateCountdown()
+    const interval = setInterval(calculateCountdown, 1000)
+
+    return () => clearInterval(interval)
+  }, [selectedCampaign?.id, selectedCampaign?.status, selectedCampaign?.started_at, selectedCampaign?.estimated_duration])
 
   const loadData = async () => {
     setLoading(true)
@@ -217,10 +272,10 @@ function AnalyticsContent() {
       setSelectedConnection(connectedOne)
     }
 
-    // Load campaigns with failed_count
+    // Load campaigns with failed_count, started_at, and estimated_duration
     const { data: campaignsData, error } = await supabase
       .from('campaigns')
-      .select('id, name, status, sent_count, delivered_count, read_count, reply_count, failed_count, total_recipients, scheduled_at')
+      .select('id, name, status, sent_count, delivered_count, read_count, reply_count, failed_count, total_recipients, scheduled_at, started_at, estimated_duration')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
 
@@ -235,14 +290,21 @@ function AnalyticsContent() {
     setRecipientsLoading(true)
     const supabase = createClient()
     // Load ALL recipients (not limited) to get accurate counts
+    // Sort by created_at to maintain order, and put sent messages with time first
     const { data } = await supabase
       .from('campaign_messages')
-      .select('id, phone, name, status, sent_at, message_content, sent_message_content, sender_session_name, sender_phone, variables, error_message')
+      .select('id, phone, name, status, sent_at, message_content, sent_message_content, sender_session_name, sender_phone, variables, error_message, created_at')
       .eq('campaign_id', campaignId)
-      .order('sent_at', { ascending: false, nullsFirst: false })
+      .order('created_at', { ascending: true })
 
     if (data) {
-      setRecipients(data)
+      // Sort by send order - most recent sent/processed first
+      const sorted = [...data].sort((a, b) => {
+        const aTime = a.sent_at || a.created_at
+        const bTime = b.sent_at || b.created_at
+        return new Date(bTime).getTime() - new Date(aTime).getTime()
+      })
+      setRecipients(sorted)
     }
     setRecipientsLoading(false)
   }
@@ -677,6 +739,17 @@ function AnalyticsContent() {
     return phone
   }
 
+  // Format duration in seconds to readable format (short version for campaign list)
+  const formatDurationShort = (seconds: number | undefined | null) => {
+    if (!seconds) return null
+    const hours = Math.floor(seconds / 3600)
+    const minutes = Math.floor((seconds % 3600) / 60)
+    if (hours > 0) {
+      return minutes > 0 ? `${hours}ש׳ ${minutes}ד׳` : `${hours}ש׳`
+    }
+    return `${minutes}ד׳`
+  }
+
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center" dir="rtl">
@@ -844,17 +917,21 @@ function AnalyticsContent() {
                         </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1 mt-2 justify-end">
-                      <span className={`text-[12px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>זמן הפצת הקמפיין</span>
-                    </div>
-                    <div className="flex items-center gap-1 justify-end">
-                      <span className={`text-[12px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
-                        {campaign.scheduled_at
-                          ? `${new Date(campaign.scheduled_at).toLocaleDateString('he-IL')}, ${new Date(campaign.scheduled_at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}`
-                          : '-'
-                        }
-                      </span>
-                      <Clock size={12} className="text-[#0043E0]" />
+                    <div className="flex items-center gap-2 mt-2 justify-end">
+                      <div className="flex items-center gap-1">
+                        <span className={`text-[12px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
+                          {campaign.scheduled_at
+                            ? `${new Date(campaign.scheduled_at).toLocaleDateString('he-IL')}, ${new Date(campaign.scheduled_at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}`
+                            : '-'
+                          }
+                        </span>
+                        <Clock size={12} className="text-[#0043E0]" />
+                      </div>
+                      {campaign.estimated_duration && (
+                        <span className={`text-[11px] px-2 py-0.5 rounded ${darkMode ? 'bg-[#1a2d4a] text-gray-300' : 'bg-[#F2F3F8] text-[#595C7A]'}`}>
+                          {formatDurationShort(campaign.estimated_duration)}
+                        </span>
+                      )}
                     </div>
                   </div>
                 ))
@@ -889,15 +966,28 @@ function AnalyticsContent() {
                 </div>
               </div>
 
-              {/* Send Time Card - Compact */}
+              {/* Send Time Card - Compact with countdown */}
               <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[10px] px-4 py-3`}>
                 <h3 className={`text-[14px] font-semibold mb-1 text-right ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
-                  זמן שליחת הקמפיין
+                  {selectedCampaign?.status === 'running' && countdown ? 'זמן שנותר' : 'זמן שליחת הקמפיין'}
                 </h3>
-                <p className={`text-[13px] text-right ${darkMode ? 'text-white' : 'text-[#030733]'}`}>משך השליחה הכולל</p>
-                <p className={`text-[12px] text-right ${darkMode ? 'text-gray-400' : 'text-[#454545]'}`}>
-                  {campaignDuration || (selectedCampaign?.status === 'running' ? 'בתהליך...' : '-')}
-                </p>
+                {selectedCampaign?.status === 'running' && countdown ? (
+                  <>
+                    <p className={`text-[20px] font-bold text-right ${darkMode ? 'text-[#0043E0]' : 'text-[#0043E0]'}`} dir="ltr">
+                      {countdown}
+                    </p>
+                    <p className={`text-[11px] text-right ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
+                      סה״כ: {formatDurationShort(selectedCampaign.estimated_duration)}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className={`text-[13px] text-right ${darkMode ? 'text-white' : 'text-[#030733]'}`}>משך השליחה הכולל</p>
+                    <p className={`text-[12px] text-right ${darkMode ? 'text-gray-400' : 'text-[#454545]'}`}>
+                      {campaignDuration || (selectedCampaign?.status === 'running' ? 'בתהליך...' : '-')}
+                    </p>
+                  </>
+                )}
               </div>
 
               {/* Average Response Time Card - Compact */}
@@ -913,9 +1003,9 @@ function AnalyticsContent() {
             </div>
 
             {/* BOTTOM ROW: Recipients Panel + Stats Column */}
-            <div className="grid grid-cols-7 gap-4">
-              {/* Recipients Panel (takes 4 cols) */}
-              <div className={`col-span-4 ${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[15px] p-5`}>
+            <div className="grid grid-cols-7 gap-4 flex-1">
+              {/* Recipients Panel (takes 4 cols) - with frame, stretched to bottom */}
+              <div className={`col-span-4 ${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[15px] p-5 flex flex-col`}>
                 <h3 className={`text-[18px] font-semibold mb-4 text-right ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
                   נמענים בקמפיין זה
                 </h3>
@@ -937,7 +1027,7 @@ function AnalyticsContent() {
                   </div>
                 </div>
 
-                <div>
+                <div className="flex-1 overflow-y-auto min-h-[400px]">
                   {!selectedCampaign ? (
                     <div className="flex items-center justify-center h-[280px]">
                       <p className={`text-[14px] ${darkMode ? 'text-white' : 'text-[#030733]'}`}>אנא בחר קמפיין לצפייה בנתונים</p>
@@ -955,7 +1045,7 @@ function AnalyticsContent() {
                       <p className={`text-[14px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>לא נמצאו נמענים לחיפוש זה</p>
                     </div>
                   ) : (
-                    <div className="space-y-2 max-h-[280px] overflow-y-auto">
+                    <div className="space-y-2">
                       {filteredRecipients.map((recipient) => (
                         <div
                           key={recipient.id}

@@ -246,10 +246,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create campaign messages' }, { status: 500 })
     }
 
+    // Update campaign with estimated duration (total time to send all messages)
+    const estimatedDuration = cumulativeDelaySeconds
+    await supabase
+      .from('campaigns')
+      .update({ estimated_duration: estimatedDuration })
+      .eq('id', campaign.id)
+
     // Campaign is now in draft status - user must launch it from summary page
     return NextResponse.json({
       success: true,
-      campaign,
+      campaign: { ...campaign, estimated_duration: estimatedDuration },
       message: 'הקמפיין נוצר בהצלחה. עבור לדף הסיכום לשיגור.'
     })
 
