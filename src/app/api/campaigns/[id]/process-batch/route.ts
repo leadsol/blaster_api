@@ -96,12 +96,14 @@ async function handler(
     }
 
     // Get pending messages (limited to batch size)
+    // IMPORTANT: Order by scheduled_delay_seconds to ensure proper spacing calculation
+    // (created_at may have identical timestamps for batch-inserted messages)
     const { data: pendingMessages, error: messagesError } = await supabase
       .from('campaign_messages')
       .select('id, scheduled_delay_seconds')
       .eq('campaign_id', campaignId)
       .eq('status', 'pending')
-      .order('created_at', { ascending: true })
+      .order('scheduled_delay_seconds', { ascending: true })
       .limit(BATCH_SIZE)
 
     if (messagesError) {
@@ -129,7 +131,8 @@ async function handler(
     // Example: if message 1 has delay 35s and message 2 has delay 78s,
     // message 2 will be sent 43 seconds AFTER message 1 (78-35=43)
     let scheduledCount = 0
-    let cumulativeDelay = 5 // Start with small initial delay
+    let cumulativeDelay = 10 // Start with initial delay of 10 seconds
+    const MIN_SPACING = 10 // Minimum spacing between messages in seconds
 
     for (let i = 0; i < pendingMessages.length; i++) {
       const message = pendingMessages[i]
@@ -144,18 +147,22 @@ async function handler(
         // Calculate the spacing between this message and the previous one
         // This is the ORIGINAL spacing that was calculated during campaign creation (10-60 seconds)
         const prevDelay = pendingMessages[i - 1].scheduled_delay_seconds || 0
-        const spacing = currentDelay - prevDelay
+        let spacing = currentDelay - prevDelay
+
+        // CRITICAL: Ensure minimum spacing of 10 seconds between messages
+        // This prevents WhatsApp from blocking the number
+        if (spacing < MIN_SPACING) {
+          console.log(`[PROCESS-BATCH] Warning: spacing ${spacing}s is less than minimum ${MIN_SPACING}s, adjusting`)
+          spacing = MIN_SPACING
+        }
 
         // Accumulate the spacing
         cumulativeDelay += spacing
         delayFromNow = cumulativeDelay
       }
 
-      // Add small randomness (0-3 seconds) to avoid exact patterns
-      delayFromNow += Math.floor(Math.random() * 3)
-
-      // Ensure minimum 5 second delay between messages
-      delayFromNow = Math.max(5, delayFromNow)
+      // Add small randomness (0-5 seconds) to avoid exact patterns
+      delayFromNow += Math.floor(Math.random() * 5)
 
       console.log(`[PROCESS-BATCH] Scheduling message ${message.id} with ${delayFromNow}s delay from now (original scheduled_delay: ${currentDelay}s, spacing from prev: ${i > 0 ? currentDelay - (pendingMessages[i-1].scheduled_delay_seconds || 0) : 0}s)`)
 
