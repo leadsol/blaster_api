@@ -515,10 +515,11 @@ function AnalyticsContent() {
       })
 
       if (response.ok) {
+        const pausedAt = new Date().toISOString()
         setCampaigns(prev => prev.map(c =>
-          c.id === selectedCampaign.id ? { ...c, status: 'paused' } : c
+          c.id === selectedCampaign.id ? { ...c, status: 'paused', paused_at: pausedAt } : c
         ))
-        setSelectedCampaign({ ...selectedCampaign, status: 'paused' })
+        setSelectedCampaign({ ...selectedCampaign, status: 'paused', paused_at: pausedAt })
         setAlertModal({
           isOpen: true,
           title: 'הקמפיין הושהה',
@@ -565,10 +566,20 @@ function AnalyticsContent() {
       })
 
       if (response.ok) {
+        // Calculate new started_at based on elapsed time before pause
+        // This makes the countdown continue from where it left off
+        let newStartedAt = selectedCampaign.started_at
+        if (selectedCampaign.paused_at && selectedCampaign.started_at) {
+          const originalStartTime = new Date(selectedCampaign.started_at).getTime()
+          const pausedTime = new Date(selectedCampaign.paused_at).getTime()
+          const elapsedBeforePause = pausedTime - originalStartTime
+          newStartedAt = new Date(Date.now() - elapsedBeforePause).toISOString()
+        }
+
         setCampaigns(prev => prev.map(c =>
-          c.id === selectedCampaign.id ? { ...c, status: 'running' } : c
+          c.id === selectedCampaign.id ? { ...c, status: 'running', paused_at: undefined, started_at: newStartedAt } : c
         ))
-        setSelectedCampaign({ ...selectedCampaign, status: 'running' })
+        setSelectedCampaign({ ...selectedCampaign, status: 'running', paused_at: undefined, started_at: newStartedAt })
         setAlertModal({
           isOpen: true,
           title: 'הקמפיין ממשיך לרוץ',
