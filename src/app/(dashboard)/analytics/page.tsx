@@ -82,6 +82,14 @@ function AnalyticsContent() {
   const [dailyLimit, setDailyLimit] = useState<number>(0)
   const [resumeAt, setResumeAt] = useState<string | null>(null)
   const [deviceMessagesCount, setDeviceMessagesCount] = useState<Record<string, number>>({}) // Per-device message count in selected campaign
+  const [allDevicesStats, setAllDevicesStats] = useState<Array<{
+    id: string
+    name: string
+    phone: string | null
+    sentToday: number
+    limit: number
+    status: string
+  }>>([]) // Daily stats for all devices
 
   // Modal states
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -234,6 +242,13 @@ function AnalyticsContent() {
       setDailyLimit(0)
     }
   }, [selectedConnection])
+
+  // Load all devices stats when connections or campaigns change
+  useEffect(() => {
+    if (connections.length > 0) {
+      loadAllDevicesStats()
+    }
+  }, [connections, campaigns])
 
   // Countdown timer for running/paused campaigns
   useEffect(() => {
@@ -453,6 +468,78 @@ function AnalyticsContent() {
 
     setDailyMessageCount(sentTodayFromDevice || 0)
     setDailyLimit(perDeviceLimit)
+  }
+
+  // Calculate daily stats for ALL devices
+  const loadAllDevicesStats = async () => {
+    const supabase = createClient()
+
+    if (connections.length === 0) {
+      setAllDevicesStats([])
+      return
+    }
+
+    const BASE_MESSAGES_PER_DAY_PER_DEVICE = 90
+    const VARIATION_BONUS = 10
+    const todayStart = new Date()
+    todayStart.setHours(0, 0, 0, 0)
+
+    const stats = await Promise.all(
+      connections.map(async (conn) => {
+        // Get all campaigns using this device
+        const { data: deviceCampaigns } = await supabase
+          .from('campaigns')
+          .select('message_variations')
+          .or(`connection_id.eq.${conn.id},device_ids.cs.{${conn.id}}`)
+
+        // Calculate max variation bonus across all campaigns using this device
+        let maxVariationBonus = 0
+        if (deviceCampaigns) {
+          deviceCampaigns.forEach(camp => {
+            const messageVariations: string[] = camp.message_variations || []
+            const variationCount = messageVariations.length > 1 ? messageVariations.length : 0
+            const bonus = variationCount > 1 ? (variationCount - 1) * VARIATION_BONUS : 0
+            maxVariationBonus = Math.max(maxVariationBonus, bonus)
+          })
+        }
+
+        const deviceLimit = BASE_MESSAGES_PER_DAY_PER_DEVICE + maxVariationBonus
+
+        // Count messages sent today from this device
+        let sentToday = 0
+        if (conn.phone_number) {
+          const { data: allCampaignsWithDevice } = await supabase
+            .from('campaigns')
+            .select('id')
+            .or(`connection_id.eq.${conn.id},device_ids.cs.{${conn.id}}`)
+
+          const campaignIdsUsingDevice = allCampaignsWithDevice?.map(c => c.id) || []
+
+          if (campaignIdsUsingDevice.length > 0) {
+            const { count: sentTodayFromDevice } = await supabase
+              .from('campaign_messages')
+              .select('id', { count: 'exact', head: true })
+              .in('campaign_id', campaignIdsUsingDevice)
+              .eq('status', 'sent')
+              .eq('sender_phone', conn.phone_number)
+              .gte('sent_at', todayStart.toISOString())
+
+            sentToday = sentTodayFromDevice || 0
+          }
+        }
+
+        return {
+          id: conn.id,
+          name: conn.display_name || conn.session_name,
+          phone: conn.phone_number,
+          sentToday,
+          limit: deviceLimit,
+          status: conn.status
+        }
+      })
+    )
+
+    setAllDevicesStats(stats)
   }
 
   const handleDeleteCampaign = () => {
@@ -1020,6 +1107,63 @@ function AnalyticsContent() {
                 )}
               </div>
             </div>
+
+            {/* Device Analytics */}
+            {allDevicesStats.length > 0 && (
+              <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[10px] px-5 py-4`}>
+                <h3 className={`text-[14px] font-semibold mb-3 ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+                  לימיט יומי למכשירים
+                </h3>
+                <div className="space-y-2">
+                  {allDevicesStats.map((device) => {
+                    const percentage = (device.sentToday / device.limit) * 100
+                    const remaining = device.limit - device.sentToday
+                    const isAtLimit = device.sentToday >= device.limit
+                    const isNearLimit = percentage >= 80
+
+                    return (
+                      <div
+                        key={device.id}
+                        className={`p-3 rounded-lg ${darkMode ? 'bg-[#0f1b30]' : 'bg-[#f2f3f8]'}`}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <div className={`w-2 h-2 rounded-full ${device.status === 'connected' ? 'bg-green-500' : 'bg-red-500'}`} />
+                            <span className={`text-[13px] font-medium ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+                              {device.name}
+                            </span>
+                          </div>
+                          <span className={`text-[11px] ${isAtLimit ? 'text-red-500' : isNearLimit ? 'text-orange-500' : darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
+                            {device.sentToday}/{device.limit}
+                          </span>
+                        </div>
+                        <div className={`h-1.5 rounded-full overflow-hidden ${darkMode ? 'bg-[#1a2d4a]' : 'bg-gray-200'}`}>
+                          <div
+                            className={`h-full transition-all ${isAtLimit ? 'bg-red-500' : isNearLimit ? 'bg-orange-500' : 'bg-green-500'}`}
+                            style={{ width: `${Math.min(percentage, 100)}%` }}
+                          />
+                        </div>
+                        <div className="flex items-center justify-between mt-1">
+                          <span className={`text-[10px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                            {formatPhoneNumber(device.phone)}
+                          </span>
+                          {!isAtLimit && (
+                            <span className={`text-[10px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                              נותרו {remaining}
+                            </span>
+                          )}
+                          {isAtLimit && (
+                            <span className="text-[10px] text-red-500">
+                              הגעת ללימיט
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Filter Tabs */}
             <div className="flex gap-2 flex-wrap">
