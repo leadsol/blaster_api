@@ -32,6 +32,9 @@ interface CampaignStats {
   multi_device?: boolean
   message_variations?: string[]
   error_message?: string // Error message when campaign fails
+  respect_active_hours?: boolean
+  active_hours_start?: string
+  active_hours_end?: string
 }
 
 interface Recipient {
@@ -78,6 +81,7 @@ function AnalyticsContent() {
   const [selectedConnection, setSelectedConnection] = useState<Connection | null>(null)
   const [selectedDevices, setSelectedDevices] = useState<Set<string>>(new Set()) // Multiple device selection
   const [showConnectionDropdown, setShowConnectionDropdown] = useState(false)
+  const [showDeviceStatsDropdown, setShowDeviceStatsDropdown] = useState(false)
   const [countdown, setCountdown] = useState<string | null>(null)
   const [dailyMessageCount, setDailyMessageCount] = useState<number>(0)
   const [dailyLimit, setDailyLimit] = useState<number>(0)
@@ -104,11 +108,12 @@ function AnalyticsContent() {
   }>({ isOpen: false, title: '', type: 'info' })
 
   const statusFilters = [
-    { key: 'custom', label: "תאריך מותאם אישית: 'לא נבחר כלום'" },
     { key: 'completed', label: 'הושלם' },
     { key: 'scheduled', label: 'מתוזמן' },
     { key: 'failed', label: 'נכשל' },
     { key: 'running', label: 'פעיל' },
+    { key: 'paused', label: 'מושהה' },
+    { key: 'cancelled', label: 'בוטל' },
     { key: 'draft', label: 'טיוטה' },
     { key: 'all', label: 'הכל' },
   ]
@@ -1012,43 +1017,43 @@ function AnalyticsContent() {
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center" dir="rtl">
-        <Loader2 className="w-8 h-8 animate-spin text-[#0043E0]" />
+        <Loader2 className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 animate-spin text-[#0043E0]" />
       </div>
     )
   }
 
   return (
-    <div className={`min-h-screen p-8 pb-4 ${darkMode ? 'bg-[#0a1628]' : 'bg-[#F2F3F8]'}`} dir="rtl">
-      <div className="max-w-[1600px] mx-auto">
-        <div className="grid grid-cols-12 gap-6">
-          {/* RIGHT COLUMN - Campaign List (col-span-5) - EXPANDED */}
-          <div className="col-span-5 space-y-4 order-1">
+    <div className={`min-h-screen p-2 sm:p-4 md:p-6 lg:p-8 xl:p-10 2xl:p-12 pb-2 sm:pb-3 md:pb-4 ${darkMode ? 'bg-[#0a1628]' : 'bg-[#F2F3F8]'}`} dir="rtl">
+      <div className="max-w-full sm:max-w-full md:max-w-full lg:max-w-[1400px] xl:max-w-[1600px] 2xl:max-w-[2000px] mx-auto">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-2 sm:gap-3 md:gap-4 lg:gap-5 xl:gap-6 2xl:gap-8">
+          {/* RIGHT COLUMN - Campaign List - RESPONSIVE */}
+          <div className="lg:col-span-5 xl:col-span-5 space-y-2 sm:space-y-3 md:space-y-4 order-1 lg:order-1">
             {/* Connection Header - Above Campaigns */}
-            <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[10px] px-5 py-4`}>
-              <div className="flex items-center gap-4 relative">
+            <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[8px] sm:rounded-[10px] md:rounded-[12px] px-3 sm:px-4 md:px-5 xl:px-6 py-2 sm:py-3 md:py-4`}>
+              <div className="flex items-center gap-2 sm:gap-3 md:gap-4 relative">
                 <button
-                  className={`${selectedConnection?.status === 'connected' ? 'bg-[#030733]' : 'bg-gray-400'} rounded-full w-[30px] h-[30px] flex items-center justify-center`}
+                  className={`${selectedConnection?.status === 'connected' ? 'bg-[#030733]' : 'bg-gray-400'} rounded-full w-[24px] h-[24px] sm:w-[28px] sm:h-[28px] md:w-[30px] md:h-[30px] xl:w-[34px] xl:h-[34px] flex items-center justify-center flex-shrink-0`}
                 >
                   {selectedConnection?.status === 'connected' ? (
-                    <Check className="text-white" size={16} />
+                    <Check className="text-white" size={14} />
                   ) : (
-                    <span className="text-white text-[10px]">!</span>
+                    <span className="text-white text-[9px] sm:text-[10px]">!</span>
                   )}
                 </button>
                 <button
                   onClick={() => setShowConnectionDropdown(!showConnectionDropdown)}
-                  className="flex items-center gap-2"
+                  className="flex items-center gap-1 sm:gap-2 flex-shrink-0"
                 >
-                  <ChevronDown className={`${darkMode ? 'text-white' : 'text-[#030733]'} transition-transform ${showConnectionDropdown ? 'rotate-180' : ''}`} size={18} />
+                  <ChevronDown className={`${darkMode ? 'text-white' : 'text-[#030733]'} transition-transform ${showConnectionDropdown ? 'rotate-180' : ''}`} size={16} />
                 </button>
-                <div className="text-right flex-1">
-                  <p className={`text-[13px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
+                <div className="text-right flex-1 min-w-0">
+                  <p className={`text-[11px] sm:text-[12px] md:text-[13px] xl:text-[14px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'} truncate`}>
                     {selectedConnection
                       ? `אתה מחובר וצופה בנתונים עבור "${selectedConnection.display_name || selectedConnection.session_name}"`
                       : 'בחר מכשיר לצפייה בקמפיינים'
                     }
                   </p>
-                  <p className={`text-[14px] font-medium ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+                  <p className={`text-[12px] sm:text-[13px] md:text-[14px] xl:text-[15px] 2xl:text-[16px] font-medium ${darkMode ? 'text-white' : 'text-[#030733]'} truncate`}>
                     {selectedConnection
                       ? `מספר וואטצאפ: ${formatPhoneNumber(selectedConnection.phone_number || null)}`
                       : 'כל המכשירים'
@@ -1056,7 +1061,7 @@ function AnalyticsContent() {
                   </p>
                   {/* Daily limit info */}
                   {selectedConnection && dailyLimit > 0 && (
-                    <p className={`text-[12px] mt-1 ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
+                    <p className={`text-[10px] sm:text-[11px] md:text-[12px] xl:text-[13px] mt-0.5 sm:mt-1 ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
                       לימיט יומי: {dailyMessageCount}/{dailyLimit} הודעות
                       {dailyMessageCount >= dailyLimit && (
                         <span className="text-orange-500 mr-1">(הגעת ללימיט)</span>
@@ -1067,23 +1072,23 @@ function AnalyticsContent() {
 
                 {/* Dropdown */}
                 {showConnectionDropdown && connections.length > 0 && (
-                  <div className={`absolute top-full right-0 left-0 mt-2 ${darkMode ? 'bg-[#1a2d4a]' : 'bg-white'} rounded-[10px] shadow-lg border ${darkMode ? 'border-[#2a3f5f]' : 'border-gray-200'} z-10 overflow-hidden`}>
+                  <div className={`absolute top-full right-0 left-0 mt-1 sm:mt-2 ${darkMode ? 'bg-[#1a2d4a]' : 'bg-white'} rounded-[8px] sm:rounded-[10px] shadow-lg border ${darkMode ? 'border-[#2a3f5f]' : 'border-gray-200'} z-10 overflow-hidden max-h-[60vh] overflow-y-auto`}>
                     {/* "All Devices" option */}
                     <button
                       onClick={() => {
                         setSelectedConnection(null)
                         setShowConnectionDropdown(false)
                       }}
-                      className={`w-full px-4 py-3 text-right flex items-center justify-between hover:${darkMode ? 'bg-[#142241]' : 'bg-gray-50'} transition-colors ${
+                      className={`w-full px-3 sm:px-4 py-2 sm:py-3 text-right flex items-center justify-between hover:${darkMode ? 'bg-[#142241]' : 'bg-gray-50'} transition-colors ${
                         !selectedConnection ? (darkMode ? 'bg-[#142241]' : 'bg-gray-50') : ''
                       }`}
                     >
-                      <div className="w-2 h-2 rounded-full bg-blue-500" />
-                      <div className="flex-1 mr-3">
-                        <p className={`text-[14px] font-medium ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+                      <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-blue-500 flex-shrink-0" />
+                      <div className="flex-1 mr-2 sm:mr-3 min-w-0">
+                        <p className={`text-[12px] sm:text-[13px] md:text-[14px] font-medium ${darkMode ? 'text-white' : 'text-[#030733]'} truncate`}>
                           כל המכשירים
                         </p>
-                        <p className={`text-[12px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
+                        <p className={`text-[10px] sm:text-[11px] md:text-[12px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'} truncate`}>
                           הצג קמפיינים מכל המכשירים
                         </p>
                       </div>
@@ -1115,122 +1120,131 @@ function AnalyticsContent() {
               </div>
             </div>
 
-            {/* Device Analytics */}
+            {/* Device Analytics - BELOW CONNECTION SELECTOR */}
             {allDevicesStats.length > 0 && (
-              <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[10px] px-5 py-4`}>
-                <h3 className={`text-[13px] font-semibold mb-3 ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
-                  לימיט יומי למכשירים
-                </h3>
-
-                {/* Devices list with checkboxes */}
-                <div className="max-h-[200px] overflow-y-auto space-y-2 mb-3">
-                  {/* Select All */}
-                  <label className={`flex items-center gap-2 p-2 rounded cursor-pointer hover:${darkMode ? 'bg-[#0f1b30]' : 'bg-gray-50'}`}>
-                    <input
-                      type="checkbox"
-                      checked={selectedDevices.size === allDevicesStats.length}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setSelectedDevices(new Set(allDevicesStats.map(d => d.id)))
-                        } else {
-                          setSelectedDevices(new Set())
-                        }
-                      }}
-                      className="w-4 h-4"
-                    />
-                    <span className={`text-[12px] font-medium ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
-                      בחר הכל
-                    </span>
-                  </label>
-
-                  {/* Individual devices */}
-                  {allDevicesStats.map((device) => (
-                    <label
-                      key={device.id}
-                      className={`flex items-center gap-2 p-2 rounded cursor-pointer hover:${darkMode ? 'bg-[#0f1b30]' : 'bg-gray-50'}`}
+              <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[10px] px-5 py-4 relative`}>
+                <div className="flex items-center justify-between gap-4">
+                  {/* Left side - Device selector */}
+                  <div className="flex items-center gap-2 relative">
+                    <button
+                      onClick={() => setShowDeviceStatsDropdown(!showDeviceStatsDropdown)}
+                      className="flex items-center gap-1"
                     >
-                      <input
-                        type="checkbox"
-                        checked={selectedDevices.has(device.id)}
-                        onChange={(e) => {
-                          const newSet = new Set(selectedDevices)
-                          if (e.target.checked) {
-                            newSet.add(device.id)
-                          } else {
-                            newSet.delete(device.id)
-                          }
-                          setSelectedDevices(newSet)
-                        }}
-                        className="w-4 h-4"
-                      />
-                      <div className={`w-2 h-2 rounded-full ${device.status === 'connected' ? 'bg-green-500' : 'bg-red-500'}`} />
-                      <span className={`text-[11px] ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
-                        {device.name}
-                      </span>
-                    </label>
-                  ))}
-                </div>
+                      <ChevronDown className={`${darkMode ? 'text-white' : 'text-[#030733]'} transition-transform ${showDeviceStatsDropdown ? 'rotate-180' : ''}`} size={16} />
+                    </button>
+                    <span className={`text-[13px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
+                      לימיט יומי ({selectedDevices.size} נבחרו)
+                    </span>
 
-                {/* Combined stats for selected devices */}
-                {selectedDevices.size > 0 && (() => {
-                  const selectedStats = allDevicesStats.filter(d => selectedDevices.has(d.id))
-                  const totalSent = selectedStats.reduce((sum, d) => sum + d.sentToday, 0)
-                  const totalLimit = selectedStats.reduce((sum, d) => sum + d.limit, 0)
-                  const totalBonus = selectedStats.reduce((sum, d) => sum + d.bonus, 0)
-                  const remaining = totalLimit - totalSent
+                    {/* Dropdown for device selection - SMALL POPUP BELOW BUTTON */}
+                    {showDeviceStatsDropdown && (
+                      <div className={`absolute right-0 top-[30px] w-[300px] max-h-[200px] overflow-y-auto ${darkMode ? 'bg-[#1a2d4a]' : 'bg-white'} p-2 rounded-lg shadow-xl border ${darkMode ? 'border-[#2a3f5f]' : 'border-gray-200'} z-20`}>
+                        {/* Select All */}
+                        <label className={`flex items-center gap-2 p-2 rounded cursor-pointer hover:${darkMode ? 'bg-[#142241]' : 'bg-gray-50'}`}>
+                          <input
+                            type="checkbox"
+                            checked={selectedDevices.size === allDevicesStats.length}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedDevices(new Set(allDevicesStats.map(d => d.id)))
+                              } else {
+                                setSelectedDevices(new Set())
+                              }
+                            }}
+                            className="w-4 h-4"
+                          />
+                          <span className={`text-[12px] font-medium ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+                            בחר הכל
+                          </span>
+                        </label>
 
-                  return (
-                    <div className={`p-3 rounded-lg ${darkMode ? 'bg-[#0f1b30]' : 'bg-[#f2f3f8]'}`}>
-                      <div className="flex items-center justify-between text-center">
-                        <div className="flex-1">
-                          <div className={`text-[10px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
-                            נשלחו היום
-                          </div>
-                          <div className={`text-[16px] font-bold ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
-                            {totalSent}
-                          </div>
+                        {/* Individual devices */}
+                        {allDevicesStats.map((device) => (
+                          <label
+                            key={device.id}
+                            className={`flex items-center gap-2 p-2 rounded cursor-pointer hover:${darkMode ? 'bg-[#142241]' : 'bg-gray-50'}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedDevices.has(device.id)}
+                              onChange={(e) => {
+                                const newSet = new Set(selectedDevices)
+                                if (e.target.checked) {
+                                  newSet.add(device.id)
+                                } else {
+                                  newSet.delete(device.id)
+                                }
+                                setSelectedDevices(newSet)
+                              }}
+                              className="w-4 h-4"
+                            />
+                            <div className={`w-2 h-2 rounded-full ${device.status === 'connected' ? 'bg-green-500' : 'bg-red-500'}`} />
+                            <span className={`text-[11px] ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+                              {device.name}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Right side - Stats inline */}
+                  {selectedDevices.size > 0 && (() => {
+                    const selectedStats = allDevicesStats.filter(d => selectedDevices.has(d.id))
+                    const totalSent = selectedStats.reduce((sum, d) => sum + d.sentToday, 0)
+                    const totalLimit = selectedStats.reduce((sum, d) => sum + d.limit, 0)
+                    const totalBonus = selectedStats.reduce((sum, d) => sum + d.bonus, 0)
+                    const remaining = totalLimit - totalSent
+
+                    return (
+                      <div className="flex items-center gap-3 text-right">
+                        <div>
+                          <span className={`text-[12px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>נשלחו: </span>
+                          <span className={`text-[14px] font-medium ${darkMode ? 'text-white' : 'text-[#030733]'}`}>{totalSent}</span>
                         </div>
-                        <div className={`w-px h-8 ${darkMode ? 'bg-[#1a2d4a]' : 'bg-gray-300'}`} />
-                        <div className="flex-1">
-                          <div className={`text-[10px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
-                            נשארו להיום
-                          </div>
-                          <div className={`text-[16px] font-bold ${remaining <= 0 ? 'text-red-500' : darkMode ? 'text-white' : 'text-[#030733]'}`}>
+                        <div className={`w-px h-4 ${darkMode ? 'bg-[#2a3f5f]' : 'bg-gray-300'}`} />
+                        <div>
+                          <span className={`text-[12px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>נשארו: </span>
+                          <span className={`text-[14px] font-medium ${remaining <= 0 ? 'text-red-500' : darkMode ? 'text-white' : 'text-[#030733]'}`}>
                             {Math.max(0, remaining)}
-                          </div>
+                          </span>
                         </div>
-                        <div className={`w-px h-8 ${darkMode ? 'bg-[#1a2d4a]' : 'bg-gray-300'}`} />
-                        <div className="flex-1">
-                          <div className={`text-[10px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
-                            בונוס וריאציות
-                          </div>
-                          <div className={`text-[16px] font-bold ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+                        <div className={`w-px h-4 ${darkMode ? 'bg-[#2a3f5f]' : 'bg-gray-300'}`} />
+                        <div>
+                          <span className={`text-[12px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>בונוס: </span>
+                          <span className={`text-[14px] font-medium ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
                             {totalBonus > 0 ? `+${totalBonus}` : '0'}
-                          </div>
+                          </span>
                         </div>
                       </div>
-                    </div>
-                  )
-                })()}
+                    )
+                  })()}
+                </div>
               </div>
             )}
 
-            {/* Search Bar with Select All */}
-            <div className="flex gap-2 items-center">
-              <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[8px] px-4 py-3 flex-1 flex items-center gap-3`}>
-                <input
-                  type="text"
-                  placeholder="חפש קמפיינים"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className={`flex-1 bg-transparent outline-none text-[14px] text-right ${darkMode ? 'text-white placeholder-gray-400' : 'text-[#505050]'}`}
-                />
-                <Search className={`${darkMode ? 'text-gray-400' : 'text-[#505050]'}`} size={20} />
-              </div>
+            {/* Filter Tabs - RESPONSIVE */}
+            <div className="flex gap-1 sm:gap-1.5 md:gap-2 flex-wrap">
+              {statusFilters.slice().reverse().map((filter) => (
+                <button
+                  key={filter.key}
+                  onClick={() => setFilterStatus(filter.key)}
+                  className={`px-2 sm:px-2.5 md:px-3 lg:px-[10px] py-1 sm:py-1.5 md:py-[5px] rounded-[6px] sm:rounded-[7px] md:rounded-[8px] text-[10px] sm:text-[11px] md:text-[12px] xl:text-[13px] transition-colors ${
+                    filterStatus === filter.key
+                      ? 'bg-[#030733] text-white'
+                      : darkMode ? 'bg-[#142241] text-white' : 'bg-white text-[#030733]'
+                  }`}
+                >
+                  {filter.label}
+                </button>
+              ))}
+            </div>
 
+            {/* Search Bar with Select All - RESPONSIVE */}
+            <div className="flex gap-1.5 sm:gap-2 items-center">
               {/* Select All - compact */}
               {filteredCampaigns.length > 0 && (
-                <label className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[8px] px-3 py-3 flex items-center gap-2 cursor-pointer`}>
+                <label className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[6px] sm:rounded-[8px] px-2 sm:px-2.5 md:px-3 py-2 sm:py-2.5 md:py-3 flex items-center gap-1.5 sm:gap-2 cursor-pointer flex-shrink-0`}>
                   <input
                     type="checkbox"
                     checked={allSelected}
@@ -1238,32 +1252,43 @@ function AnalyticsContent() {
                       if (el) el.indeterminate = someSelected
                     }}
                     onChange={handleSelectAll}
-                    className={`w-[15px] h-[15px] rounded border cursor-pointer ${darkMode ? 'border-gray-400' : 'border-[#030733]'}`}
+                    className={`w-[13px] h-[13px] sm:w-[14px] sm:h-[14px] md:w-[15px] md:h-[15px] rounded border cursor-pointer ${darkMode ? 'border-gray-400' : 'border-[#030733]'}`}
                   />
-                  <span className={`text-[12px] whitespace-nowrap ${darkMode ? 'text-gray-300' : 'text-[#595C7A]'}`}>
+                  <span className={`text-[10px] sm:text-[11px] md:text-[12px] whitespace-nowrap ${darkMode ? 'text-gray-300' : 'text-[#595C7A]'}`}>
                     {checkedCampaigns.size > 0 ? `${checkedCampaigns.size}` : 'הכל'}
                   </span>
                 </label>
               )}
+
+              <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[6px] sm:rounded-[8px] px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 flex-1 flex items-center gap-2 sm:gap-2.5 md:gap-3`}>
+                <input
+                  type="text"
+                  placeholder="חפש קמפיינים"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className={`flex-1 bg-transparent outline-none text-[11px] sm:text-[12px] md:text-[13px] lg:text-[14px] text-right ${darkMode ? 'text-white placeholder-gray-400' : 'text-[#505050]'}`}
+                />
+                <Search className={`${darkMode ? 'text-gray-400' : 'text-[#505050]'} flex-shrink-0`} size={16} />
+              </div>
             </div>
 
-            {/* Campaign List */}
-            <div className="space-y-2 max-h-[calc(100vh-400px)] overflow-y-auto">
+            {/* Campaign List - RESPONSIVE */}
+            <div className="space-y-1.5 sm:space-y-2 max-h-[calc(100vh-300px)] sm:max-h-[calc(100vh-350px)] md:max-h-[calc(100vh-400px)] overflow-y-auto">
               {filteredCampaigns.length === 0 ? (
-                <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[10px] p-8 text-center`}>
-                  <Users className={`w-12 h-12 mx-auto mb-4 ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`} />
-                  <p className={`${darkMode ? 'text-gray-400' : 'text-[#505050]'} text-[14px]`}>אין קמפיינים עדיין</p>
+                <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[8px] sm:rounded-[10px] p-4 sm:p-6 md:p-8 text-center`}>
+                  <Users className={`w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 mx-auto mb-2 sm:mb-3 md:mb-4 ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`} />
+                  <p className={`${darkMode ? 'text-gray-400' : 'text-[#505050]'} text-[11px] sm:text-[12px] md:text-[13px] lg:text-[14px]`}>אין קמפיינים עדיין</p>
                 </div>
               ) : (
                 filteredCampaigns.map((campaign) => (
                   <div
                     key={campaign.id}
                     onClick={() => setSelectedCampaign(campaign)}
-                    className={`${darkMode ? 'bg-[#142241] hover:bg-[#1a2d4a]' : 'bg-white hover:bg-[#F8F8F8]'} rounded-[10px] px-4 py-4 cursor-pointer transition-colors ${
-                      selectedCampaign?.id === campaign.id ? 'ring-2 ring-[#030733]' : ''
+                    className={`${darkMode ? 'bg-[#142241] hover:bg-[#1a2d4a]' : 'bg-white hover:bg-[#F8F8F8]'} rounded-[8px] sm:rounded-[10px] px-2 sm:px-3 md:px-4 py-2 sm:py-3 md:py-4 cursor-pointer transition-colors ${
+                      selectedCampaign?.id === campaign.id ? 'ring-1 sm:ring-2 ring-[#030733]' : ''
                     }`}
                   >
-                    <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start justify-between gap-1.5 sm:gap-2 md:gap-3">
                       <input
                         type="checkbox"
                         checked={checkedCampaigns.has(campaign.id)}
@@ -1271,29 +1296,29 @@ function AnalyticsContent() {
                           e.stopPropagation()
                           handleCheck(campaign.id)
                         }}
-                        className={`w-[17px] h-[17px] rounded border cursor-pointer mt-1 ${darkMode ? 'border-gray-400' : 'border-[#030733]'}`}
+                        className={`w-[14px] h-[14px] sm:w-[15px] sm:h-[15px] md:w-[17px] md:h-[17px] rounded border cursor-pointer mt-0.5 sm:mt-1 flex-shrink-0 ${darkMode ? 'border-gray-400' : 'border-[#030733]'}`}
                       />
-                      <div className={`${getStatusColor(campaign.status)} px-3 py-1.5 rounded-[8px] text-[13px] whitespace-nowrap`}>
+                      <div className={`${getStatusColor(campaign.status)} px-2 sm:px-2.5 md:px-3 py-1 sm:py-1.5 rounded-[6px] sm:rounded-[7px] md:rounded-[8px] text-[10px] sm:text-[11px] md:text-[12px] lg:text-[13px] whitespace-nowrap flex-shrink-0`}>
                         {getStatusLabel(campaign.status)}
                       </div>
-                      <div className="flex-1 text-right">
-                        <h3 className={`text-[14px] font-medium ${darkMode ? 'text-white' : 'text-[#030733]'}`}>{campaign.name}</h3>
+                      <div className="flex-1 text-right min-w-0">
+                        <h3 className={`text-[11px] sm:text-[12px] md:text-[13px] lg:text-[14px] xl:text-[15px] font-medium ${darkMode ? 'text-white' : 'text-[#030733]'} truncate`}>{campaign.name}</h3>
                         {campaign.status === 'failed' && campaign.error_message && (
-                          <p className={`text-[11px] mt-1 ${darkMode ? 'text-red-400' : 'text-red-600'}`}>
+                          <p className={`text-[9px] sm:text-[10px] md:text-[11px] mt-0.5 sm:mt-1 ${darkMode ? 'text-red-400' : 'text-red-600'} truncate`}>
                             ⚠️ {campaign.error_message}
                           </p>
                         )}
-                        <div className="flex items-center gap-1 mt-1 justify-end">
-                          <span className={`text-[12px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
+                        <div className="flex items-center gap-0.5 sm:gap-1 mt-0.5 sm:mt-1 justify-end">
+                          <span className={`text-[10px] sm:text-[11px] md:text-[12px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
                             {(campaign.total_recipients || campaign.sent_count || 0).toLocaleString()} נמענים
                           </span>
-                          <Users size={12} className={`${darkMode ? 'text-white' : 'text-[#030733]'}`} />
+                          <Users size={10} className={`${darkMode ? 'text-white' : 'text-[#030733]'} flex-shrink-0`} />
                         </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 mt-2 justify-end">
-                      <div className="flex items-center gap-1">
-                        <span className={`text-[12px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
+                    <div className="flex items-center gap-1.5 sm:gap-2 mt-1 sm:mt-1.5 md:mt-2 justify-end">
+                      <div className="flex items-center gap-0.5 sm:gap-1">
+                        <span className={`text-[9px] sm:text-[10px] md:text-[11px] lg:text-[12px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'} truncate`}>
                           {campaign.scheduled_at
                             ? `${new Date(campaign.scheduled_at).toLocaleDateString('he-IL')}, ${new Date(campaign.scheduled_at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}`
                             : '-'
@@ -1313,47 +1338,59 @@ function AnalyticsContent() {
             </div>
           </div>
 
-          {/* MIDDLE + LEFT - Top Row spans full width (col-span-7) */}
-          <div className="col-span-7 flex flex-col gap-4 order-2">
-            {/* TOP ROW: Selected Campaign + Send Time + Response Time - COMPACT */}
-            <div className="grid grid-cols-3 gap-4">
+          {/* MIDDLE + LEFT - Stats and Details - RESPONSIVE */}
+          <div className="lg:col-span-7 xl:col-span-7 flex flex-col gap-2 sm:gap-3 md:gap-4 order-2 lg:order-2">
+            {/* TOP ROW: Selected Campaign + Send Time + Response Time - RESPONSIVE */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 md:gap-4">
               {/* Selected Campaign Card - Dark - Compact */}
-              <div className="bg-[#030733] rounded-[10px] px-4 py-3 text-white">
-                <h3 className="text-[14px] font-semibold mb-1 text-right">הקמפיין שבחרת</h3>
-                <p className="text-[13px] text-right">{selectedCampaign?.name || 'בחר קמפיין'}</p>
-                <div className="flex items-center gap-3 justify-end mt-1">
-                  <div className="flex items-center gap-1">
-                    <span className="text-[11px] text-[#B5B5B5]">
+              <div className="bg-[#030733] rounded-[8px] sm:rounded-[10px] md:rounded-[12px] px-3 sm:px-4 md:px-5 xl:px-6 py-2 sm:py-2.5 md:py-3 xl:py-4 text-white">
+                <h3 className="text-[11px] sm:text-[12px] md:text-[13px] lg:text-[14px] xl:text-[15px] 2xl:text-[16px] font-semibold mb-0.5 sm:mb-1 text-right">הקמפיין שבחרת</h3>
+                <p className="text-[10px] sm:text-[11px] md:text-[12px] lg:text-[13px] xl:text-[14px] text-right truncate">{selectedCampaign?.name || 'בחר קמפיין'}</p>
+
+                {/* Active Hours - if enabled */}
+                {selectedCampaign?.respect_active_hours && selectedCampaign?.active_hours_start && selectedCampaign?.active_hours_end && (
+                  <div className="flex items-center gap-1 sm:gap-1.5 md:gap-2 justify-end mt-1 sm:mt-1.5 md:mt-2 mb-0.5 sm:mb-1">
+                    <span className="text-[9px] sm:text-[10px] md:text-[11px] lg:text-[12px] text-[#B5B5B5]">
+                      {selectedCampaign.active_hours_start.slice(0, 5)} - {selectedCampaign.active_hours_end.slice(0, 5)}
+                    </span>
+                    <Clock size={11} className="text-[#0043E0] flex-shrink-0" />
+                    <span className="text-[8px] sm:text-[9px] md:text-[10px] lg:text-[11px] text-[#8A8A8A]">שעות פעילות</span>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2 sm:gap-2.5 md:gap-3 justify-end mt-0.5 sm:mt-1">
+                  <div className="flex items-center gap-0.5 sm:gap-1">
+                    <span className="text-[9px] sm:text-[10px] md:text-[11px] text-[#B5B5B5]">
                       {recipients.length > 0 ? recipients.length.toLocaleString() : (selectedCampaign?.total_recipients || 0).toLocaleString()}
                     </span>
-                    <Users size={12} className="text-white" />
+                    <Users size={10} className="text-white flex-shrink-0" />
                   </div>
-                  <div className="flex items-center gap-1">
-                    <span className="text-[11px] text-[#B5B5B5]">
+                  <div className="flex items-center gap-0.5 sm:gap-1">
+                    <span className="text-[9px] sm:text-[10px] md:text-[11px] text-[#B5B5B5] truncate">
                       {selectedCampaign?.scheduled_at
                         ? new Date(selectedCampaign.scheduled_at).toLocaleDateString('he-IL')
                         : '-'
                       }
                     </span>
-                    <Clock size={12} className="text-[#0043E0]" />
+                    <Clock size={10} className="text-[#0043E0] flex-shrink-0" />
                   </div>
                 </div>
               </div>
 
-              {/* Send Time Card - Compact with countdown */}
-              <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[10px] px-4 py-3`}>
-                <h3 className={`text-[14px] font-semibold mb-1 text-right ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+              {/* Send Time Card - Compact with countdown - RESPONSIVE */}
+              <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[8px] sm:rounded-[10px] md:rounded-[12px] px-3 sm:px-4 md:px-5 xl:px-6 py-2 sm:py-2.5 md:py-3 xl:py-4`}>
+                <h3 className={`text-[11px] sm:text-[12px] md:text-[13px] lg:text-[14px] xl:text-[15px] 2xl:text-[16px] font-semibold mb-0.5 sm:mb-1 text-right ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
                   {(selectedCampaign?.status === 'running' || selectedCampaign?.status === 'paused') && countdown
                     ? (selectedCampaign?.status === 'paused' ? 'זמן שנותר (מושהה)' : 'זמן שנותר')
                     : (selectedCampaign?.status === 'running' || selectedCampaign?.status === 'paused') ? 'הושלם' : 'זמן שליחת הקמפיין'}
                 </h3>
                 {(selectedCampaign?.status === 'running' || selectedCampaign?.status === 'paused') && countdown ? (
                   <>
-                    <p className={`text-[20px] font-bold text-right ${selectedCampaign?.status === 'paused' ? 'text-[#F59E0B]' : 'text-[#0043E0]'}`} dir="ltr">
+                    <p className={`text-[14px] sm:text-[16px] md:text-[18px] lg:text-[20px] xl:text-[22px] 2xl:text-[24px] font-bold text-right ${selectedCampaign?.status === 'paused' ? 'text-[#F59E0B]' : 'text-[#0043E0]'}`} dir="ltr">
                       {countdown}
-                      {selectedCampaign?.status === 'paused' && <span className="text-[12px] mr-2">⏸</span>}
+                      {selectedCampaign?.status === 'paused' && <span className="text-[10px] sm:text-[11px] md:text-[12px] mr-1 sm:mr-2">⏸</span>}
                     </p>
-                    <p className={`text-[11px] text-right ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
+                    <p className={`text-[9px] sm:text-[10px] md:text-[11px] text-right ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
                       סה״כ: {formatDurationShort(selectedCampaign.estimated_duration)}
                     </p>
                     {/* Show daily limit info if campaign is running/paused */}
@@ -1422,28 +1459,28 @@ function AnalyticsContent() {
               </div>
             </div>
 
-            {/* BOTTOM ROW: Recipients Panel + Stats Column */}
-            <div className="grid grid-cols-7 gap-4 flex-1">
-              {/* Recipients Panel (takes 4 cols) - with frame, stretched to bottom */}
-              <div className={`col-span-4 ${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[15px] p-5 flex flex-col`}>
-                <h3 className={`text-[18px] font-semibold mb-4 text-right ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+            {/* BOTTOM ROW: Recipients Panel + Stats Column - RESPONSIVE */}
+            <div className="grid grid-cols-1 lg:grid-cols-7 gap-2 sm:gap-3 md:gap-4 flex-1">
+              {/* Recipients Panel - RESPONSIVE */}
+              <div className={`lg:col-span-4 ${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[10px] sm:rounded-[12px] md:rounded-[15px] p-3 sm:p-4 md:p-5 flex flex-col`}>
+                <h3 className={`text-[13px] sm:text-[14px] md:text-[16px] lg:text-[17px] xl:text-[18px] 2xl:text-[20px] font-semibold mb-2 sm:mb-3 md:mb-4 text-right ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
                   נמענים בקמפיין זה
                 </h3>
 
-                <div className="flex gap-2 mb-4">
-                  <button className={`${darkMode ? 'bg-[#1a2d4a]' : 'bg-[#F2F3F8]'} rounded-[8px] px-3 py-2 flex items-center gap-2`}>
-                    <SlidersHorizontal className={`${darkMode ? 'text-white' : 'text-[#030733]'}`} size={18} />
-                    <span className={`text-[13px] ${darkMode ? 'text-white' : 'text-[#030733]'}`}>סנן</span>
+                <div className="flex gap-1.5 sm:gap-2 mb-2 sm:mb-3 md:mb-4">
+                  <button className={`${darkMode ? 'bg-[#1a2d4a]' : 'bg-[#F2F3F8]'} rounded-[6px] sm:rounded-[8px] px-2 sm:px-2.5 md:px-3 py-1.5 sm:py-2 flex items-center gap-1 sm:gap-1.5 md:gap-2 flex-shrink-0`}>
+                    <SlidersHorizontal className={`${darkMode ? 'text-white' : 'text-[#030733]'}`} size={14} />
+                    <span className={`text-[10px] sm:text-[11px] md:text-[12px] lg:text-[13px] ${darkMode ? 'text-white' : 'text-[#030733]'}`}>סנן</span>
                   </button>
-                  <div className={`${darkMode ? 'bg-[#1a2d4a]' : 'bg-[#F2F3F8]'} rounded-[8px] px-3 py-2 flex-1 flex items-center gap-2`}>
+                  <div className={`${darkMode ? 'bg-[#1a2d4a]' : 'bg-[#F2F3F8]'} rounded-[6px] sm:rounded-[8px] px-2 sm:px-2.5 md:px-3 py-1.5 sm:py-2 flex-1 flex items-center gap-1.5 sm:gap-2`}>
                     <input
                       type="text"
                       placeholder="חפש נמענים"
                       value={recipientSearch}
                       onChange={(e) => setRecipientSearch(e.target.value)}
-                      className={`flex-1 bg-transparent outline-none text-[13px] text-right ${darkMode ? 'text-white placeholder-gray-400' : 'text-[#505050]'}`}
+                      className={`flex-1 bg-transparent outline-none text-[10px] sm:text-[11px] md:text-[12px] lg:text-[13px] text-right ${darkMode ? 'text-white placeholder-gray-400' : 'text-[#505050]'}`}
                     />
-                    <Search className={`${darkMode ? 'text-gray-400' : 'text-[#505050]'}`} size={18} />
+                    <Search className={`${darkMode ? 'text-gray-400' : 'text-[#505050]'} flex-shrink-0`} size={14} />
                   </div>
                 </div>
 
@@ -1534,17 +1571,17 @@ function AnalyticsContent() {
                 </div>
               </div>
 
-              {/* Stats Column (takes 3 cols) */}
-              <div className="col-span-3 space-y-4">
-                {/* Stats Overview - Donut Chart + Percentages */}
-                <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[15px] p-5`}>
-                  <h3 className={`text-[16px] font-semibold mb-4 text-right ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+              {/* Stats Column - RESPONSIVE */}
+              <div className="lg:col-span-3 space-y-2 sm:space-y-3 md:space-y-4">
+                {/* Stats Overview - Donut Chart + Percentages - RESPONSIVE */}
+                <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[10px] sm:rounded-[12px] md:rounded-[15px] p-3 sm:p-4 md:p-5`}>
+                  <h3 className={`text-[12px] sm:text-[13px] md:text-[14px] lg:text-[15px] xl:text-[16px] 2xl:text-[18px] font-semibold mb-2 sm:mb-3 md:mb-4 text-right ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
                     סקירת שליחת הודעות
                   </h3>
 
-                  {/* Large Donut Chart - Centered */}
-                  <div className="flex justify-center mb-4">
-                    <div className="relative w-[180px] h-[180px]">
+                  {/* Large Donut Chart - Centered - RESPONSIVE */}
+                  <div className="flex justify-center mb-2 sm:mb-3 md:mb-4">
+                    <div className="relative w-[120px] h-[120px] sm:w-[140px] sm:h-[140px] md:w-[160px] md:h-[160px] lg:w-[180px] lg:h-[180px] xl:w-[200px] xl:h-[200px] 2xl:w-[220px] 2xl:h-[220px]">
                       <svg viewBox="0 0 100 100" className="w-full h-full transform -rotate-90">
                         <circle cx="50" cy="50" r="42" fill="none" stroke={darkMode ? '#1a2d4a' : '#E5E7EB'} strokeWidth="8" />
                         {successRate > 0 && (
@@ -1573,54 +1610,54 @@ function AnalyticsContent() {
                         )}
                       </svg>
                       <div className="absolute inset-0 flex flex-col items-center justify-center">
-                        <p className={`text-[32px] font-bold ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+                        <p className={`text-[20px] sm:text-[24px] md:text-[28px] lg:text-[32px] xl:text-[36px] 2xl:text-[40px] font-bold ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
                           {campaignStats.total}
                         </p>
-                        <p className={`text-[13px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>סה״כ הודעות</p>
+                        <p className={`text-[9px] sm:text-[10px] md:text-[11px] lg:text-[12px] xl:text-[13px] 2xl:text-[14px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>סה״כ הודעות</p>
                       </div>
                     </div>
                   </div>
 
-                  {/* Percentages below donut - same section */}
-                  <div className="space-y-3">
+                  {/* Percentages below donut - RESPONSIVE */}
+                  <div className="space-y-2 sm:space-y-2.5 md:space-y-3">
                     <div className="flex items-center justify-between">
-                      <span className="bg-[#187C55] text-white text-[12px] px-3 py-1 rounded-[6px]">{successRate}%</span>
-                      <div className="flex items-center gap-2">
-                        <span className={`text-[13px] font-semibold ${darkMode ? 'text-white' : 'text-[#030733]'}`}>{campaignStats.sent}</span>
-                        <span className={`text-[13px] ${darkMode ? 'text-white' : 'text-[#030733]'}`}>נשלחו בהצלחה</span>
+                      <span className="bg-[#187C55] text-white text-[9px] sm:text-[10px] md:text-[11px] lg:text-[12px] px-2 sm:px-2.5 md:px-3 py-0.5 sm:py-1 rounded-[5px] sm:rounded-[6px]">{successRate}%</span>
+                      <div className="flex items-center gap-1 sm:gap-1.5 md:gap-2">
+                        <span className={`text-[10px] sm:text-[11px] md:text-[12px] lg:text-[13px] xl:text-[14px] font-semibold ${darkMode ? 'text-white' : 'text-[#030733]'}`}>{campaignStats.sent}</span>
+                        <span className={`text-[10px] sm:text-[11px] md:text-[12px] lg:text-[13px] xl:text-[14px] ${darkMode ? 'text-white' : 'text-[#030733]'}`}>נשלחו בהצלחה</span>
                       </div>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="bg-[#CD1B1B] text-white text-[12px] px-3 py-1 rounded-[6px]">{failRate}%</span>
-                      <div className="flex items-center gap-2">
-                        <span className={`text-[13px] font-semibold ${darkMode ? 'text-white' : 'text-[#030733]'}`}>{campaignStats.failed}</span>
-                        <span className={`text-[13px] ${darkMode ? 'text-white' : 'text-[#030733]'}`}>נכשלו בשליחה</span>
+                      <span className="bg-[#CD1B1B] text-white text-[9px] sm:text-[10px] md:text-[11px] lg:text-[12px] px-2 sm:px-2.5 md:px-3 py-0.5 sm:py-1 rounded-[5px] sm:rounded-[6px]">{failRate}%</span>
+                      <div className="flex items-center gap-1 sm:gap-1.5 md:gap-2">
+                        <span className={`text-[10px] sm:text-[11px] md:text-[12px] lg:text-[13px] xl:text-[14px] font-semibold ${darkMode ? 'text-white' : 'text-[#030733]'}`}>{campaignStats.failed}</span>
+                        <span className={`text-[10px] sm:text-[11px] md:text-[12px] lg:text-[13px] xl:text-[14px] ${darkMode ? 'text-white' : 'text-[#030733]'}`}>נכשלו בשליחה</span>
                       </div>
                     </div>
                     {campaignStats.pending > 0 && (
                       <div className="flex items-center justify-between">
-                        <span className={`${darkMode ? 'bg-gray-600' : 'bg-gray-400'} text-white text-[12px] px-3 py-1 rounded-[6px]`}>{pendingRate}%</span>
-                        <div className="flex items-center gap-2">
-                          <span className={`text-[13px] font-semibold ${darkMode ? 'text-white' : 'text-[#030733]'}`}>{campaignStats.pending}</span>
-                          <span className={`text-[13px] ${darkMode ? 'text-white' : 'text-[#030733]'}`}>ממתינים</span>
+                        <span className={`${darkMode ? 'bg-gray-600' : 'bg-gray-400'} text-white text-[9px] sm:text-[10px] md:text-[11px] lg:text-[12px] px-2 sm:px-2.5 md:px-3 py-0.5 sm:py-1 rounded-[5px] sm:rounded-[6px]`}>{pendingRate}%</span>
+                        <div className="flex items-center gap-1 sm:gap-1.5 md:gap-2">
+                          <span className={`text-[10px] sm:text-[11px] md:text-[12px] lg:text-[13px] xl:text-[14px] font-semibold ${darkMode ? 'text-white' : 'text-[#030733]'}`}>{campaignStats.pending}</span>
+                          <span className={`text-[10px] sm:text-[11px] md:text-[12px] lg:text-[13px] xl:text-[14px] ${darkMode ? 'text-white' : 'text-[#030733]'}`}>ממתינים</span>
                         </div>
                       </div>
                     )}
                   </div>
                 </div>
 
-                {/* Responses Received */}
-                <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[10px] p-4`}>
-                  <div className="flex items-center justify-between mb-3">
-                    <MessageCircle size={17} className={`${darkMode ? 'text-white' : 'text-[#030733]'}`} />
-                    <h3 className={`text-[15px] font-semibold ${darkMode ? 'text-white' : 'text-[#030733]'}`}>תגובות שהתקבלו</h3>
+                {/* Responses Received - RESPONSIVE */}
+                <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[8px] sm:rounded-[10px] p-2 sm:p-3 md:p-4`}>
+                  <div className="flex items-center justify-between mb-2 sm:mb-2.5 md:mb-3">
+                    <MessageCircle size={14} className={`${darkMode ? 'text-white' : 'text-[#030733]'} flex-shrink-0`} />
+                    <h3 className={`text-[11px] sm:text-[12px] md:text-[13px] lg:text-[14px] xl:text-[15px] font-semibold ${darkMode ? 'text-white' : 'text-[#030733]'}`}>תגובות שהתקבלו</h3>
                   </div>
                   <div className="mb-2">
                     <div className={`${darkMode ? 'bg-[#030733]/40' : 'bg-[rgba(3,7,51,0.24)]'} h-[6px] rounded-[50px] overflow-hidden`}>
                       <div className="bg-[#030733] h-full rounded-[50px] transition-all duration-300" style={{ width: `${replyRate}%` }} />
                     </div>
                   </div>
-                  <div className="flex items-center justify-between text-[12px]">
+                  <div className="flex items-center justify-between text-[9px] sm:text-[10px] md:text-[11px] lg:text-[12px]">
                     <span className={`${darkMode ? 'text-gray-400' : 'text-[#454545]'}`}>
                       <span className={`font-medium ${darkMode ? 'text-white' : 'text-[#030733]'}`}>{campaignStats.sent}</span> סה״כ
                     </span>
@@ -1631,18 +1668,18 @@ function AnalyticsContent() {
                   </div>
                 </div>
 
-                {/* Messages Viewed */}
-                <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[10px] p-4`}>
-                  <div className="flex items-center justify-between mb-3">
-                    <CheckCheck size={17} className={`${darkMode ? 'text-white' : 'text-[#030733]'}`} />
-                    <h3 className={`text-[15px] font-semibold ${darkMode ? 'text-white' : 'text-[#030733]'}`}>הודעות שנצפו</h3>
+                {/* Messages Viewed - RESPONSIVE */}
+                <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[8px] sm:rounded-[10px] p-2 sm:p-3 md:p-4`}>
+                  <div className="flex items-center justify-between mb-2 sm:mb-2.5 md:mb-3">
+                    <CheckCheck size={14} className={`${darkMode ? 'text-white' : 'text-[#030733]'} flex-shrink-0`} />
+                    <h3 className={`text-[11px] sm:text-[12px] md:text-[13px] lg:text-[14px] xl:text-[15px] font-semibold ${darkMode ? 'text-white' : 'text-[#030733]'}`}>הודעות שנצפו</h3>
                   </div>
                   <div className="mb-2">
                     <div className={`${darkMode ? 'bg-[#030733]/40' : 'bg-[rgba(3,7,51,0.24)]'} h-[6px] rounded-[50px] overflow-hidden`}>
                       <div className="bg-[#030733] h-full rounded-[50px] transition-all duration-300" style={{ width: `${readRate}%` }} />
                     </div>
                   </div>
-                  <div className="flex items-center justify-between text-[12px]">
+                  <div className="flex items-center justify-between text-[9px] sm:text-[10px] md:text-[11px] lg:text-[12px]">
                     <span className={`${darkMode ? 'text-gray-400' : 'text-[#454545]'}`}>
                       <span className={`font-medium ${darkMode ? 'text-white' : 'text-[#030733]'}`}>{campaignStats.sent}</span> סה״כ
                     </span>
@@ -1653,74 +1690,74 @@ function AnalyticsContent() {
                   </div>
                 </div>
 
-                {/* Campaign Control Buttons */}
+                {/* Campaign Control Buttons - RESPONSIVE */}
                 {selectedCampaign && ['running', 'paused', 'scheduled'].includes(selectedCampaign.status) && (
-                  <div className="flex gap-2 justify-center mb-3">
+                  <div className="flex gap-1.5 sm:gap-2 justify-center mb-2 sm:mb-3">
                     {selectedCampaign.status === 'running' && (
                       <button
                         onClick={handlePauseCampaign}
-                        className="flex-1 bg-[#F59E0B] rounded-[9px] py-2.5 px-4 flex items-center justify-center gap-2 hover:opacity-80 transition-opacity"
+                        className="flex-1 bg-[#F59E0B] rounded-[7px] sm:rounded-[8px] md:rounded-[9px] py-1.5 sm:py-2 md:py-2.5 px-2 sm:px-3 md:px-4 flex items-center justify-center gap-1 sm:gap-1.5 md:gap-2 hover:opacity-80 transition-opacity"
                         title="השהה קמפיין"
                       >
-                        <span className="text-white text-[13px] font-medium">השהה</span>
+                        <span className="text-white text-[10px] sm:text-[11px] md:text-[12px] lg:text-[13px] font-medium">השהה</span>
                       </button>
                     )}
                     {selectedCampaign.status === 'paused' && (
                       <button
                         onClick={handleResumeCampaign}
-                        className="flex-1 bg-[#187C55] rounded-[9px] py-2.5 px-4 flex items-center justify-center gap-2 hover:opacity-80 transition-opacity"
+                        className="flex-1 bg-[#187C55] rounded-[7px] sm:rounded-[8px] md:rounded-[9px] py-1.5 sm:py-2 md:py-2.5 px-2 sm:px-3 md:px-4 flex items-center justify-center gap-1 sm:gap-1.5 md:gap-2 hover:opacity-80 transition-opacity"
                         title="המשך קמפיין"
                       >
-                        <Play size={18} className="text-white" />
-                        <span className="text-white text-[13px] font-medium">המשך</span>
+                        <Play size={14} className="text-white flex-shrink-0" />
+                        <span className="text-white text-[10px] sm:text-[11px] md:text-[12px] lg:text-[13px] font-medium">המשך</span>
                       </button>
                     )}
                     <button
                       onClick={handleCancelCampaign}
-                      className="flex-1 bg-[#CD1B1B] rounded-[9px] py-2.5 px-4 flex items-center justify-center gap-2 hover:opacity-80 transition-opacity"
+                      className="flex-1 bg-[#CD1B1B] rounded-[7px] sm:rounded-[8px] md:rounded-[9px] py-1.5 sm:py-2 md:py-2.5 px-2 sm:px-3 md:px-4 flex items-center justify-center gap-1 sm:gap-1.5 md:gap-2 hover:opacity-80 transition-opacity"
                       title="בטל קמפיין"
                     >
-                      <StopCircle size={18} className="text-white" />
-                      <span className="text-white text-[13px] font-medium">בטל</span>
+                      <StopCircle size={14} className="text-white flex-shrink-0" />
+                      <span className="text-white text-[10px] sm:text-[11px] md:text-[12px] lg:text-[13px] font-medium">בטל</span>
                     </button>
                   </div>
                 )}
 
-                {/* Social/Action Buttons */}
-                <div className="flex gap-2 justify-center">
+                {/* Social/Action Buttons - RESPONSIVE */}
+                <div className="flex gap-1.5 sm:gap-2 justify-center">
                   <button
                     onClick={handleDeleteCampaign}
                     disabled={(checkedCampaigns.size === 0 && !selectedCampaign) || deleting}
-                    className="bg-[#CD1B1B] rounded-[9px] p-2.5 flex items-center justify-center hover:opacity-80 transition-opacity disabled:opacity-50"
+                    className="bg-[#CD1B1B] rounded-[7px] sm:rounded-[8px] md:rounded-[9px] p-1.5 sm:p-2 md:p-2.5 flex items-center justify-center hover:opacity-80 transition-opacity disabled:opacity-50"
                     title={checkedCampaigns.size > 0 ? `מחק ${checkedCampaigns.size} קמפיינים` : 'מחק קמפיין'}
                   >
-                    {deleting ? <Loader2 size={22} className="text-white animate-spin" /> : <Trash2 size={22} className="text-white" />}
-                    {checkedCampaigns.size > 1 && <span className="text-white text-xs mr-1">({checkedCampaigns.size})</span>}
+                    {deleting ? <Loader2 size={18} className="text-white animate-spin" /> : <Trash2 size={18} className="text-white" />}
+                    {checkedCampaigns.size > 1 && <span className="text-white text-[9px] sm:text-[10px] mr-0.5 sm:mr-1">({checkedCampaigns.size})</span>}
                   </button>
                   <button
                     onClick={handleExportCampaign}
                     disabled={!selectedCampaign || recipients.length === 0}
-                    className="bg-[#030733] rounded-[9px] p-2.5 flex items-center justify-center hover:opacity-80 transition-opacity disabled:opacity-50"
+                    className="bg-[#030733] rounded-[7px] sm:rounded-[8px] md:rounded-[9px] p-1.5 sm:p-2 md:p-2.5 flex items-center justify-center hover:opacity-80 transition-opacity disabled:opacity-50"
                     title="ייצא לקובץ CSV"
                   >
-                    <Download size={22} className="text-white" />
+                    <Download size={18} className="text-white" />
                   </button>
                   <button
                     onClick={handleDuplicateCampaign}
                     disabled={!selectedCampaign}
-                    className="bg-[#030733] rounded-[9px] p-2.5 flex items-center justify-center hover:opacity-80 transition-opacity disabled:opacity-50"
+                    className="bg-[#030733] rounded-[7px] sm:rounded-[8px] md:rounded-[9px] p-1.5 sm:p-2 md:p-2.5 flex items-center justify-center hover:opacity-80 transition-opacity disabled:opacity-50"
                     title="שכפל קמפיין"
                   >
-                    <Copy size={22} className="text-white" />
+                    <Copy size={18} className="text-white" />
                   </button>
                   {/* Edit button - only visible for draft campaigns */}
                   {selectedCampaign?.status === 'draft' && (
                     <button
                       onClick={handleEditCampaign}
-                      className="bg-[#F59E0B] rounded-[9px] p-2.5 flex items-center justify-center hover:opacity-80 transition-opacity"
+                      className="bg-[#F59E0B] rounded-[7px] sm:rounded-[8px] md:rounded-[9px] p-1.5 sm:p-2 md:p-2.5 flex items-center justify-center hover:opacity-80 transition-opacity"
                       title="ערוך טיוטה"
                     >
-                      <Pencil size={22} className="text-white" />
+                      <Pencil size={18} className="text-white" />
                     </button>
                   )}
                 </div>
@@ -1730,31 +1767,31 @@ function AnalyticsContent() {
         </div>
       </div>
 
-      {/* Recipient Details Modal */}
+      {/* Recipient Details Modal - RESPONSIVE */}
       {selectedRecipient && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setSelectedRecipient(null)}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4" onClick={() => setSelectedRecipient(null)}>
           <div
-            className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[15px] p-6 max-w-lg w-full mx-4 max-h-[80vh] overflow-y-auto`}
+            className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[10px] sm:rounded-[12px] md:rounded-[15px] p-3 sm:p-4 md:p-6 max-w-lg w-full max-h-[90vh] sm:max-h-[85vh] md:max-h-[80vh] overflow-y-auto`}
             onClick={e => e.stopPropagation()}
             dir="rtl"
           >
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-2 sm:mb-3 md:mb-4">
               <button
                 onClick={() => setSelectedRecipient(null)}
-                className={`p-1 rounded hover:bg-gray-200 ${darkMode ? 'hover:bg-[#1a2d4a]' : ''}`}
+                className={`p-0.5 sm:p-1 rounded hover:bg-gray-200 ${darkMode ? 'hover:bg-[#1a2d4a]' : ''}`}
               >
-                <X size={20} className={darkMode ? 'text-white' : 'text-[#030733]'} />
+                <X size={18} className={darkMode ? 'text-white' : 'text-[#030733]'} />
               </button>
-              <h3 className={`text-[18px] font-semibold ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+              <h3 className={`text-[14px] sm:text-[16px] md:text-[18px] font-semibold ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
                 פרטי נמען
               </h3>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-2 sm:space-y-3 md:space-y-4">
               {/* Basic Info */}
-              <div className={`${darkMode ? 'bg-[#1a2d4a]' : 'bg-[#F2F3F8]'} rounded-[10px] p-4`}>
-                <div className="flex items-center justify-between mb-2">
-                  <span className={`text-[11px] px-2 py-0.5 rounded ${
+              <div className={`${darkMode ? 'bg-[#1a2d4a]' : 'bg-[#F2F3F8]'} rounded-[8px] sm:rounded-[10px] p-2 sm:p-3 md:p-4`}>
+                <div className="flex items-center justify-between mb-1.5 sm:mb-2">
+                  <span className={`text-[9px] sm:text-[10px] md:text-[11px] px-1.5 sm:px-2 py-0.5 rounded ${
                     selectedRecipient.status === 'sent' ? 'bg-[#187C55] text-white' :
                     selectedRecipient.status === 'delivered' ? 'bg-[#10B981] text-white' :
                     selectedRecipient.status === 'read' ? 'bg-[#0043E0] text-white' :

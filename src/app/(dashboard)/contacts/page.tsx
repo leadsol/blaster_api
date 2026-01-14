@@ -260,26 +260,26 @@ export default function ContactsPage() {
   }
 
   return (
-    <div className="p-3 sm:p-4 lg:p-[35px] h-full overflow-y-auto" dir="rtl">
+    <div className="p-2 sm:p-3 md:p-4 lg:p-5 xl:p-6 2xl:p-[35px] h-full overflow-y-auto" dir="rtl">
       {/* Header */}
-      <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[10px] min-h-[66px] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3 sm:px-[20px] sm:py-0 mb-4 lg:mb-[20px]`}>
-        <div className="flex items-center gap-2">
-          <div className={`w-[30px] h-[30px] ${darkMode ? 'bg-white' : 'bg-[#030733]'} rounded-full flex items-center justify-center flex-shrink-0`}>
-            <Users className={`w-[14px] h-[14px] ${darkMode ? 'text-[#030733]' : 'text-white'}`} />
+      <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[8px] sm:rounded-[10px] min-h-[60px] sm:min-h-[66px] md:min-h-[70px] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3 p-2.5 sm:p-3 md:px-5 md:py-0 lg:px-6 xl:px-[20px] xl:py-0 mb-3 sm:mb-4 md:mb-5 lg:mb-6 xl:mb-[20px]`}>
+        <div className="flex items-center gap-2 sm:gap-2.5 md:gap-3">
+          <div className={`w-[26px] h-[26px] sm:w-[30px] sm:h-[30px] md:w-[32px] md:h-[32px] ${darkMode ? 'bg-white' : 'bg-[#030733]'} rounded-full flex items-center justify-center flex-shrink-0`}>
+            <Users className={`w-[12px] h-[12px] sm:w-[14px] sm:h-[14px] md:w-[15px] md:h-[15px] ${darkMode ? 'text-[#030733]' : 'text-white'}`} />
           </div>
           <div className="text-right">
-            <p className={`${darkMode ? 'text-white' : 'text-[#030733]'} text-[16px] sm:text-[18px] font-semibold`}>אנשי קשר</p>
-            <p className={`${darkMode ? 'text-gray-400' : 'text-[#595C7A]'} text-[12px] sm:text-[13px]`}>נהל את רשימת אנשי הקשר שלך</p>
+            <p className={`${darkMode ? 'text-white' : 'text-[#030733]'} text-[14px] sm:text-[16px] md:text-[17px] lg:text-[18px] xl:text-[19px] font-semibold`}>אנשי קשר</p>
+            <p className={`${darkMode ? 'text-gray-400' : 'text-[#595C7A]'} text-[11px] sm:text-[12px] md:text-[13px]`}>נהל את רשימת אנשי הקשר שלך</p>
           </div>
         </div>
 
         {/* Filter tabs - horizontal scroll on mobile */}
-        <div className="flex items-center gap-2 sm:gap-[10px] overflow-x-auto pb-1 sm:pb-0 w-full sm:w-auto">
+        <div className="flex items-center gap-1.5 sm:gap-2 md:gap-2.5 lg:gap-[10px] overflow-x-auto pb-1 sm:pb-0 w-full sm:w-auto">
           {statusOptions.slice(1).map((option) => (
             <button
               key={option.value}
               onClick={() => setStatusFilter(option.value)}
-              className={`px-3 sm:px-[15px] py-[6px] sm:py-[7px] rounded-[8px] text-[13px] sm:text-[14px] transition-colors whitespace-nowrap flex-shrink-0 ${
+              className={`px-2.5 sm:px-3 md:px-4 lg:px-[15px] py-[5px] sm:py-[6px] md:py-[7px] rounded-[6px] sm:rounded-[8px] text-[11px] sm:text-[13px] md:text-[14px] lg:text-[15px] transition-colors whitespace-nowrap flex-shrink-0 ${
                 statusFilter === option.value
                   ? 'bg-[#030733] text-white'
                   : darkMode ? 'bg-[#1a2d4a] text-white hover:bg-[#243a5a]' : 'bg-white text-[#030733] hover:bg-[#F2F3F8]'
@@ -290,7 +290,7 @@ export default function ContactsPage() {
           ))}
           <button
             onClick={() => setStatusFilter('all')}
-            className={`px-3 sm:px-[15px] py-[6px] sm:py-[7px] rounded-[8px] text-[13px] sm:text-[14px] transition-colors whitespace-nowrap flex-shrink-0 ${
+            className={`px-2.5 sm:px-3 md:px-4 lg:px-[15px] py-[5px] sm:py-[6px] md:py-[7px] rounded-[6px] sm:rounded-[8px] text-[11px] sm:text-[13px] md:text-[14px] lg:text-[15px] transition-colors whitespace-nowrap flex-shrink-0 ${
               statusFilter === 'all' ? 'bg-[#030733] text-white' : darkMode ? 'bg-[#1a2d4a] text-white' : 'bg-white text-[#030733]'
             }`}
           >
@@ -299,51 +299,51 @@ export default function ContactsPage() {
         </div>
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-4 lg:gap-[20px]">
+      <div className="flex flex-col lg:flex-row gap-3 sm:gap-4 md:gap-5 lg:gap-6 xl:gap-[20px]">
         {/* Main Content */}
-        <div className="flex-1 flex flex-col gap-[10px]">
+        <div className="flex-1 flex flex-col gap-2 sm:gap-2.5 md:gap-3 lg:gap-[10px]">
           {/* Search and Actions */}
-          <div className="flex flex-col sm:flex-row gap-2 sm:gap-[10px]">
+          <div className="flex flex-col sm:flex-row gap-2 sm:gap-2.5 md:gap-3 lg:gap-[10px]">
             {/* Search Row */}
-            <div className="flex gap-2 sm:gap-[10px] flex-1">
+            <div className="flex gap-2 sm:gap-2.5 md:gap-3 lg:gap-[10px] flex-1">
               <div className="flex-1 relative">
                 <input
                   type="text"
                   placeholder="חפש..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className={`w-full h-[38px] sm:h-[47px] ${darkMode ? 'bg-[#1a2d4a] text-white placeholder-gray-400' : 'bg-white text-[#505050] placeholder-[#505050]'} rounded-[8px] pr-[12px] sm:pr-[15px] pl-[35px] sm:pl-[45px] text-[12px] sm:text-[14px] outline-none focus:ring-2 focus:ring-[#0043E0]`}
+                  className={`w-full h-[36px] sm:h-[38px] md:h-[42px] lg:h-[45px] xl:h-[47px] ${darkMode ? 'bg-[#1a2d4a] text-white placeholder-gray-400' : 'bg-white text-[#505050] placeholder-[#505050]'} rounded-[6px] sm:rounded-[8px] pr-[10px] sm:pr-[12px] md:pr-[15px] pl-[32px] sm:pl-[35px] md:pl-[40px] lg:pl-[45px] text-[11px] sm:text-[12px] md:text-[13px] lg:text-[14px] outline-none focus:ring-2 focus:ring-[#0043E0]`}
                 />
-                <Search className={`w-[16px] h-[16px] sm:w-[20px] sm:h-[20px] absolute left-[10px] sm:left-[15px] top-1/2 -translate-y-1/2 ${darkMode ? 'text-white' : 'text-[#030733]'}`} />
+                <Search className={`w-[14px] h-[14px] sm:w-[16px] sm:h-[16px] md:w-[18px] md:h-[18px] lg:w-[20px] lg:h-[20px] absolute left-[8px] sm:left-[10px] md:left-[12px] lg:left-[15px] top-1/2 -translate-y-1/2 ${darkMode ? 'text-white' : 'text-[#030733]'}`} />
               </div>
-              <button className={`h-[38px] sm:h-[47px] px-3 sm:px-[20px] ${darkMode ? 'bg-[#1a2d4a]' : 'bg-white'} rounded-[8px] flex items-center gap-1 sm:gap-2`}>
-                <span className={`${darkMode ? 'text-white' : 'text-[#030733]'} text-[12px] sm:text-[14px] hidden sm:inline`}>סנן</span>
-                <Filter className={`w-[16px] h-[16px] sm:w-[20px] sm:h-[20px] ${darkMode ? 'text-white' : 'text-[#030733]'}`} />
+              <button className={`h-[36px] sm:h-[38px] md:h-[42px] lg:h-[45px] xl:h-[47px] px-2.5 sm:px-3 md:px-4 lg:px-5 xl:px-[20px] ${darkMode ? 'bg-[#1a2d4a]' : 'bg-white'} rounded-[6px] sm:rounded-[8px] flex items-center gap-1 sm:gap-2`}>
+                <span className={`${darkMode ? 'text-white' : 'text-[#030733]'} text-[11px] sm:text-[12px] md:text-[13px] lg:text-[14px] hidden md:inline`}>סנן</span>
+                <Filter className={`w-[14px] h-[14px] sm:w-[16px] sm:h-[16px] md:w-[18px] md:h-[18px] lg:w-[20px] lg:h-[20px] ${darkMode ? 'text-white' : 'text-[#030733]'}`} />
               </button>
             </div>
             {/* Actions Row */}
-            <div className="flex items-center gap-2 sm:gap-[10px]">
+            <div className="flex items-center gap-1.5 sm:gap-2 md:gap-2.5 lg:gap-[10px]">
               <button
                 onClick={() => setShowImportModal(true)}
-                className={`h-[38px] sm:h-[47px] px-2 sm:px-[20px] ${darkMode ? 'bg-[#1a2d4a] hover:bg-[#243a5a]' : 'bg-white hover:bg-[#F2F3F8]'} rounded-[8px] flex items-center gap-1 sm:gap-2 transition-colors`}
+                className={`h-[36px] sm:h-[38px] md:h-[42px] lg:h-[45px] xl:h-[47px] px-2 sm:px-2.5 md:px-3 lg:px-4 xl:px-[20px] ${darkMode ? 'bg-[#1a2d4a] hover:bg-[#243a5a]' : 'bg-white hover:bg-[#F2F3F8]'} rounded-[6px] sm:rounded-[8px] flex items-center gap-1 sm:gap-1.5 md:gap-2 transition-colors`}
               >
-                <Upload className={`w-[14px] h-[14px] sm:w-[18px] sm:h-[18px] ${darkMode ? 'text-white' : 'text-[#030733]'}`} />
-                <span className={`${darkMode ? 'text-white' : 'text-[#030733]'} text-[11px] sm:text-[14px]`}>ייבוא</span>
+                <Upload className={`w-[13px] h-[13px] sm:w-[14px] sm:h-[14px] md:w-[16px] md:h-[16px] lg:w-[18px] lg:h-[18px] ${darkMode ? 'text-white' : 'text-[#030733]'}`} />
+                <span className={`${darkMode ? 'text-white' : 'text-[#030733]'} text-[10px] sm:text-[11px] md:text-[12px] lg:text-[13px] xl:text-[14px]`}>ייבוא</span>
               </button>
               <button
                 onClick={exportContacts}
                 disabled={contacts.length === 0}
-                className={`h-[38px] sm:h-[47px] px-2 sm:px-[20px] ${darkMode ? 'bg-[#1a2d4a] hover:bg-[#243a5a]' : 'bg-white hover:bg-[#F2F3F8]'} rounded-[8px] flex items-center gap-1 sm:gap-2 transition-colors disabled:opacity-50`}
+                className={`h-[36px] sm:h-[38px] md:h-[42px] lg:h-[45px] xl:h-[47px] px-2 sm:px-2.5 md:px-3 lg:px-4 xl:px-[20px] ${darkMode ? 'bg-[#1a2d4a] hover:bg-[#243a5a]' : 'bg-white hover:bg-[#F2F3F8]'} rounded-[6px] sm:rounded-[8px] flex items-center gap-1 sm:gap-1.5 md:gap-2 transition-colors disabled:opacity-50`}
               >
-                <Download className={`w-[14px] h-[14px] sm:w-[18px] sm:h-[18px] ${darkMode ? 'text-white' : 'text-[#030733]'}`} />
-                <span className={`${darkMode ? 'text-white' : 'text-[#030733]'} text-[11px] sm:text-[14px]`}>ייצוא</span>
+                <Download className={`w-[13px] h-[13px] sm:w-[14px] sm:h-[14px] md:w-[16px] md:h-[16px] lg:w-[18px] lg:h-[18px] ${darkMode ? 'text-white' : 'text-[#030733]'}`} />
+                <span className={`${darkMode ? 'text-white' : 'text-[#030733]'} text-[10px] sm:text-[11px] md:text-[12px] lg:text-[13px] xl:text-[14px]`}>ייצוא</span>
               </button>
               <button
                 onClick={() => setShowNewContactModal(true)}
-                className="h-[38px] sm:h-[47px] px-3 sm:px-[25px] bg-[#0043E0] text-white rounded-[8px] flex items-center gap-1 sm:gap-2 hover:bg-[#0035b0] transition-colors"
+                className="h-[36px] sm:h-[38px] md:h-[42px] lg:h-[45px] xl:h-[47px] px-2.5 sm:px-3 md:px-4 lg:px-5 xl:px-[25px] bg-[#0043E0] text-white rounded-[6px] sm:rounded-[8px] flex items-center gap-1 sm:gap-1.5 md:gap-2 hover:bg-[#0035b0] transition-colors"
               >
-                <UserPlus className="w-[14px] h-[14px] sm:w-[20px] sm:h-[20px]" />
-                <span className="text-[11px] sm:text-[14px] font-semibold whitespace-nowrap">הוסף</span>
+                <UserPlus className="w-[13px] h-[13px] sm:w-[14px] sm:h-[14px] md:w-[16px] md:h-[16px] lg:w-[18px] lg:h-[18px] xl:w-[20px] xl:h-[20px]" />
+                <span className="text-[10px] sm:text-[11px] md:text-[12px] lg:text-[13px] xl:text-[14px] font-semibold whitespace-nowrap">הוסף</span>
               </button>
             </div>
           </div>

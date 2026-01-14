@@ -98,6 +98,50 @@ async function handler(
       return NextResponse.json({ success: true, skipped: true, reason: 'Campaign not running' })
     }
 
+    // Check if we're within active hours (if enabled)
+    if (campaign.respect_active_hours && campaign.active_hours_start && campaign.active_hours_end) {
+      const now = new Date()
+      const currentTime = now.toTimeString().slice(0, 5) // HH:MM format
+
+      const startTime = campaign.active_hours_start.slice(0, 5) // Extract HH:MM from TIME
+      const endTime = campaign.active_hours_end.slice(0, 5)
+
+      // Check if current time is within active hours
+      const isWithinActiveHours = currentTime >= startTime && currentTime <= endTime
+
+      if (!isWithinActiveHours) {
+        console.log(`⏰ [SEND-MESSAGE] Outside active hours (${startTime}-${endTime}, current: ${currentTime}). Rescheduling message ${messageId}`)
+
+        // Calculate delay until next active hours start
+        const [startHour, startMinute] = startTime.split(':').map(Number)
+        const nextActiveStart = new Date(now)
+        nextActiveStart.setHours(startHour, startMinute, 0, 0)
+
+        // If we're past today's active hours, schedule for tomorrow
+        if (currentTime > endTime) {
+          nextActiveStart.setDate(nextActiveStart.getDate() + 1)
+        }
+
+        const delaySeconds = Math.floor((nextActiveStart.getTime() - now.getTime()) / 1000)
+
+        // Reschedule the message for next active hours
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL && process.env.NEXT_PUBLIC_APP_URL !== 'http://localhost:3000'
+          ? process.env.NEXT_PUBLIC_APP_URL
+          : (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
+
+        const endpoint = `${appUrl}/api/campaigns/${campaignId}/send-message`
+
+        await qstash.publishJSON({
+          url: endpoint,
+          body: { messageId },
+          delay: delaySeconds
+        })
+
+        console.log(`⏰ [SEND-MESSAGE] Rescheduled message for ${nextActiveStart.toISOString()} (in ${delaySeconds}s)`)
+        return NextResponse.json({ success: true, rescheduled: true, nextAttempt: nextActiveStart.toISOString() })
+      }
+    }
+
     // Get a connected device with available daily capacity
     let deviceConnection = campaign.connection
 

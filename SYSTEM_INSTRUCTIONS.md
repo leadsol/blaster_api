@@ -1,6 +1,12 @@
 # LeadSol - מדריך מערכת מקיף
 
-> ⚠️ **עדכון חשוב - 14.01.2026**: תוקנו 4 באגים קריטיים! ראה [FIXES_APPLIED.md](FIXES_APPLIED.md) לפרטים מלאים ו-migration חובה.
+> ⚠️ **עדכון חשוב - 15.01.2026**:
+> - ✅ תוקנו 4 באגים קריטיים! ראה [FIXES_APPLIED.md](FIXES_APPLIED.md)
+> - ✅ נוספו שעות פעילות (Active Hours) - מניעת שליחת הודעות בשעות לא נוחות
+> - ✅ תוקן race condition בהצטלבות קמפיינים - מניעת שימוש במכשיר עסוק
+> - ✅ שופרו מגבלות יומיות - חישוב מדויק לפי וריאציות ומכשירים
+> - ✅ נוספה תצוגת פילוג הודעות לפי ימים
+> - 🔧 **4 migrations חדשות חובה!** ראה [migrations/README.md](migrations/README.md)
 
 ## תיאור כללי
 **LeadSol** היא פלטפורמת אוטומציה לשיווק בוואטסאפ עם ממשק בעברית (RTL). המערכת מאפשרת ניהול קמפיינים, ניהול אנשי קשר, צ'אט בזמן אמת, וחיבור למספר מכשירי וואטסאפ.
@@ -243,6 +249,12 @@ leadsol/
 - delay_min (INTEGER) - עיכוב מינימלי בין הודעות (שניות)
 - delay_max (INTEGER) - עיכוב מקסימלי בין הודעות (שניות)
 - scheduled_at (TIMESTAMP) - מועד תזמון
+- active_hours_start (TIME) - שעת התחלה לשעות פעילות (ברירת מחדל: 09:00)
+- active_hours_end (TIME) - שעת סיום לשעות פעילות (ברירת מחדל: 18:00)
+- respect_active_hours (BOOLEAN) - האם לכבד שעות פעילות (ברירת מחדל: true)
+- paused_at (TIMESTAMP) - מתי הקמפיין הושהה
+- error_message (TEXT) - הודעת שגיאה במקרה של כישלון
+- estimated_duration (TEXT) - זמן משוער לסיום
 - total_contacts (INTEGER)
 - sent_count (INTEGER)
 - delivered_count (INTEGER)
@@ -347,6 +359,221 @@ leadsol/
 - **group_events** - אירועי קבוצות
 - **poll_votes** - תשובות לסקרים
 - **call_logs** - היסטוריית שיחות
+
+---
+
+## עדכונים חשובים - 15.01.2026
+
+### שיפורים קריטיים במערכת הקמפיינים
+
+#### 1. מניעת הצטלבות קמפיינים (Campaign Race Condition Prevention)
+
+**הבעיה שנפתרה:**
+- לפני העדכון: מספר קמפיינים יכלו להתחיל באותו זמן ולנסות להשתמש באותם מכשירים
+- זה גרם לשגיאות ולכישלון קמפיינים
+
+**הפתרון:**
+- **בעת התחלת קמפיין** (`/api/campaigns/[id]/process`):
+  - בדיקה שהמכשירים המבוקשים לא עסוקים בקמפיין אחר שרץ
+  - אם מכשיר עסוק → הקמפיין נכשל עם הודעת שגיאה ברורה: "המכשיר X עסוק בקמפיין Y"
+  - הודעת השגיאה נשמרת ב-`campaigns.error_message`
+
+- **בעת שליחת הודעה** (`/api/campaigns/[id]/send-message`):
+  - בדיקה רציפה שהמכשיר לא עסוק בקמפיין אחר
+  - במצב multi-device: דילוג על מכשירים עסוקים ובחירת מכשיר פנוי
+  - במצב single-device: אם המכשיר עסוק → ההודעה נכשלת
+
+**קוד רלוונטי:**
+```typescript
+// בדיקת הצטלבות לפני התחלת קמפיין
+const { data: otherRunningCampaign } = await supabase
+  .from('campaigns')
+  .select('id, name')
+  .eq('status', 'running')
+  .neq('id', campaignId)
+  .or(`connection_id.eq.${device.id},device_ids.cs.{${device.id}}`)
+  .single()
+
+if (otherRunningCampaign) {
+  await supabase
+    .from('campaigns')
+    .update({
+      status: 'failed',
+      error_message: `המכשיר ${device.session_name} עסוק בקמפיין "${otherRunningCampaign.name}"`
+    })
+    .eq('id', campaignId)
+}
+```
+
+#### 2. שעות פעילות (Active Hours)
+
+**תכונה חדשה:**
+- הגדרת טווח שעות ביום שבו הודעות יכולות להישלח
+- מונע שליחת הודעות בשעות לא נוחות (לילה, שבת, וכו')
+
+**שדות חדשים בטבלה:**
+- `active_hours_start` (TIME) - ברירת מחדל: 09:00
+- `active_hours_end` (TIME) - ברירת מחדל: 18:00
+- `respect_active_hours` (BOOLEAN) - ברירת מחדל: true
+
+**לוגיקת תזמון מחדש:**
+```typescript
+// בדיקה בזמן שליחת הודעה
+if (campaign.respect_active_hours && campaign.active_hours_start && campaign.active_hours_end) {
+  const currentTime = now.toTimeString().slice(0, 5) // HH:MM
+  const startTime = campaign.active_hours_start.slice(0, 5)
+  const endTime = campaign.active_hours_end.slice(0, 5)
+
+  if (currentTime < startTime || currentTime > endTime) {
+    // חישוב מתי השעות הפעילות הבאות
+    const nextActiveStart = calculateNextActiveStart(now, startTime, endTime)
+
+    // תזמון מחדש ב-QStash
+    await qstash.publishJSON({
+      url: endpoint,
+      body: { messageId },
+      delay: delaySeconds
+    })
+
+    return { success: true, rescheduled: true }
+  }
+}
+```
+
+**תצוגה ב-UI:**
+- בעמוד יצירת קמפיין: Checkbox עם בחירת שעות התחלה וסיום
+- באנליטיקס: הצגת שעות הפעילות של הקמפיין הנבחר
+- Tooltip מסביר על היתרונות
+
+**Migration:**
+- `migrations/add_active_hours_to_campaigns.sql`
+- **חובה להריץ!** ראה `migrations/README.md`
+
+#### 3. מגבלות יומיות מדויקות (Accurate Daily Limits)
+
+**חישוב מגבלה יומית למכשיר:**
+```typescript
+const BASE_LIMIT = 90  // הודעות בסיסיות ליום
+const VARIATION_BONUS = 10  // בונוס לכל וריאציה נוספת
+
+// חישוב בונוס וריאציות
+const variationCount = messageVariations.length > 1 ? messageVariations.length : 0
+const extraVariationBonus = variationCount > 1 ? (variationCount - 1) * VARIATION_BONUS : 0
+const deviceLimit = BASE_LIMIT + extraVariationBonus
+
+// דוגמה: 3 וריאציות = 90 + (2 × 10) = 110 הודעות ליום
+```
+
+**בדיקת מגבלה בזמן אמת:**
+```typescript
+// ספירת הודעות שנשלחו היום
+const todayStart = new Date()
+todayStart.setHours(0, 0, 0, 0)
+
+const { count: sentToday } = await supabase
+  .from('campaign_messages')
+  .select('id', { count: 'exact', head: true })
+  .in('campaign_id', campaignIds)
+  .eq('status', 'sent')
+  .eq('sender_phone', device.phone_number)
+  .gte('sent_at', todayStart.toISOString())
+
+if (sentToday >= deviceLimit) {
+  // המכשיר הגיע למגבלה היומית
+  deviceConnection = null
+}
+```
+
+**Multi-Device:**
+- כל מכשיר נבדק בנפרד
+- בחירה אקראית רק ממכשירים שלא הגיעו למגבלה
+- אם כל המכשירים הגיעו למגבלה → ההודעה נכשלת
+
+#### 4. טיפול בכישלונות וזמני המתנה
+
+**תזמון הודעה הבאה מיידית אחרי כישלון:**
+```typescript
+async function scheduleNextMessageImmediately(campaignId: string) {
+  // מציאת ההודעה הממתינה הבאה
+  const { data: nextMessage } = await supabase
+    .from('campaign_messages')
+    .select('id')
+    .eq('campaign_id', campaignId)
+    .eq('status', 'pending')
+    .order('scheduled_delay_seconds', { ascending: true })
+    .limit(1)
+    .single()
+
+  if (nextMessage) {
+    // תזמון מיידי (5 שניות עיכוב למניעת rate limiting)
+    await qstash.publishJSON({
+      url: endpoint,
+      body: { messageId: nextMessage.id },
+      delay: 5
+    })
+  }
+}
+```
+
+**שימוש:**
+- אחרי כישלון שליחה
+- אחרי גילוי שאין מכשיר זמין
+- מבטיח המשכיות הקמפיין גם במקרה של שגיאות
+
+#### 5. שדות נוספים שנוספו
+
+**בטבלת campaigns:**
+- `paused_at` (TIMESTAMP) - מתי הקמפיין הושהה
+- `error_message` (TEXT) - הודעת שגיאה במקרה של כישלון
+- `estimated_duration` (TEXT) - זמן משוער לסיום הקמפיין
+
+**בטבלת campaign_messages:**
+- `failed_at` (TIMESTAMP) - מתי ההודעה נכשלה
+- `sender_session_name` (TEXT) - שם המכשיר ששלח
+- `sender_phone` (TEXT) - מספר המכשיר ששלח
+
+**Migrations חדשות:**
+1. `add_missing_campaign_columns.sql` - עמודות חסרות
+2. `add_timestamps_to_messages.sql` - failed_at
+3. `add_error_message_to_campaigns.sql` - error_message
+4. `add_active_hours_to_campaigns.sql` - שעות פעילות
+
+**חובה להריץ את כל ה-migrations!** ראה `migrations/README.md`
+
+#### 6. תצוגת פילוג הודעות לפי ימים
+
+**בעמוד סיכום הקמפיין:**
+- חישוב אוטומטי של כמה ימים ייקח לסיים את הקמפיין
+- פילוג מדויק: "היום: X הודעות, מחר: Y הודעות..."
+- לוקח בחשבון:
+  - מספר וריאציות ההודעות
+  - מספר מכשירים
+  - מגבלה יומית למכשיר
+
+```typescript
+const BASE_MESSAGES_PER_DAY = 90
+const BONUS_PER_VARIATION = 10
+const variationBonus = variationCount > 1 ? (variationCount - 1) * BONUS_PER_VARIATION : 0
+const messagesPerDayPerDevice = BASE_MESSAGES_PER_DAY + variationBonus
+const totalDailyLimit = messagesPerDayPerDevice * deviceCount
+
+const daysNeeded = Math.ceil(totalMessages / totalDailyLimit)
+```
+
+#### 7. logging משופר
+
+**לוגים מפורטים:**
+```typescript
+console.log(`[SEND-MESSAGE] Device ${device.session_name}: sent ${sentToday}/${deviceLimit} today`)
+console.log(`⏰ [SEND-MESSAGE] Outside active hours - Rescheduling for ${nextActiveStart}`)
+console.log(`⚠️ [SEND-MESSAGE] Device busy in campaign "${otherCampaign.name}" - skipping`)
+console.error(`❌ [PROCESS] Device ${device.session_name} is busy`)
+```
+
+**יתרונות:**
+- דיבוג קל יותר
+- מעקב אחר זרימת הקמפיין
+- זיהוי בעיות מהר
 
 ---
 
@@ -470,6 +697,19 @@ leadsol/
   - אחרי 60 הודעות → 1 שעה הפסקה
   - אחרי 90 הודעות → 1.5 שעות הפסקה (חוזר)
 
+**שעות פעילות (Active Hours):**
+- **הגדרת שעות פעילות**: קביעת טווח שעות ביום שבו הודעות יכולות להישלח
+- **ברירת מחדל**: 09:00 - 18:00 (ניתן לשינוי)
+- **התנהגות**:
+  - אם הודעה מתוזמנת מחוץ לשעות הפעילות → נדחית אוטומטית לתחילת השעות הפעילות הבאות
+  - אם עברנו את שעות הפעילות של היום → ההודעה נדחית למחרת בשעת התחלה
+  - עדכון בזמן אמת עם QStash rescheduling
+- **יתרונות**:
+  - הימנעות משליחת הודעות בשעות לא נוחות (לילה, שבת, וכו')
+  - שמירה על חוויית משתמש טובה למקבלי ההודעות
+  - הפחתת סיכוי לדיווחי ספאם
+- **ניתן לכיבוי**: סימון "שעות פעילות" מאפשר לבטל את ההגבלה ולשלוח 24/7
+
 **מכשירים מרובים (Multi-Device):**
 - אם מופעל: הודעות מסתובבות בין כל המכשירים המחוברים
 - העלאת throughput - כל מכשיר יכול לשלוח 90-100 הודעות/יום
@@ -510,8 +750,15 @@ leadsol/
 
 4. **שולח הודעות בודדות (Message Sender)** - `/api/campaigns/[id]/send-message`:
    - בדיקה שהקמפיין עדיין `running`
+   - **בדיקת שעות פעילות**:
+     - אם `respect_active_hours` מופעל וההודעה נמצאת מחוץ לשעות הפעילות
+     - חישוב מתי השעות הפעילות הבאות מתחילות
+     - אם עברנו את סוף היום → תזמון למחר בשעת ההתחלה
+     - תזמון מחדש של ההודעה ב-QStash עם העיכוב המחושב
+     - החזרת תשובה `{ success: true, rescheduled: true, nextAttempt: ... }`
    - בחירת מכשיר:
-     - אם multi-device: בחירה אקראית
+     - אם multi-device: בחירה אקראית ממכשירים זמינים
+     - בדיקה שהמכשיר לא עסוק בקמפיין אחר
      - אם לא: המכשיר היחיד של המשתמש
    - שליחת ההודעה דרך WAHA API
    - עדכון סטטוס ל-`sent` + `waha_message_id`
@@ -1281,6 +1528,26 @@ if (error) console.error('Supabase error:', error)
 
 ---
 
-**גרסה**: 1.0.0
-**עדכון אחרון**: 2026-01-14
+**גרסה**: 1.1.0
+**עדכון אחרון**: 2026-01-15
 **מחבר**: LeadSol Team
+
+## רשימת שינויים (Changelog)
+
+### גרסה 1.1.0 (15.01.2026)
+- ✨ **תכונה חדשה**: שעות פעילות (Active Hours) - תזמון הודעות רק בשעות מסוימות ביום
+- 🐛 **תיקון באג**: מניעת race condition בהצטלבות קמפיינים - קמפיינים לא יתחילו אם המכשיר עסוק
+- 🐛 **תיקון באג**: חישוב מדויק של מגבלות יומיות לפי מספר וריאציות ומכשירים
+- 🎨 **שיפור UI**: תצוגת פילוג הודעות לפי ימים בעמוד סיכום הקמפיין
+- 🎨 **שיפור UI**: הצגת שעות פעילות באנליטיקס
+- 🎨 **שיפור UI**: צמצום וריכוז כפתורי פילטר באנליטיקס
+- 🔧 **שיפור טכני**: logging משופר עם אימוג'י ומידע מפורט
+- 🔧 **שיפור טכני**: תזמון מיידי של הודעה הבאה אחרי כישלון
+- 📦 **Database**: 4 migrations חדשות (חובה להריץ!)
+
+### גרסה 1.0.0 (14.01.2026)
+- 🐛 **תיקון באג**: עיכוב בין הודעות - שימוש ב-10-60 שניות אקראי
+- 🐛 **תיקון באג**: סימון קמפיין כ-completed כשכל ההודעות נשלחו
+- 🐛 **תיקון באג**: countdown לא נעצר כשמשהים קמפיין
+- 🐛 **תיקון באג**: כיווניות טקסט בעברית ב-UI
+- 🎨 **שיפור UI**: שיפורים רבים בממשק המשתמש

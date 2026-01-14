@@ -108,4 +108,29 @@ AND column_name = 'error_message';
 
 ---
 
+### Migration: add_active_hours_to_campaigns.sql
+
+**תיאור**: הוספת עמודות שעות פעילות לטבלת campaigns
+
+**חובה להריץ**: ✅ כן! בלי זה לא ניתן לשלוט בשעות שליחת ההודעות
+
+**מתי להריץ**: מיד אחרי pull של הקוד החדש
+
+**מה זה מוסיף**:
+- `active_hours_start` - שעת התחלה לשליחת הודעות (ברירת מחדל: 09:00)
+- `active_hours_end` - שעת סיום לשליחת הודעות (ברירת מחדל: 18:00)
+- `respect_active_hours` - האם לכבד את שעות הפעילות (ברירת מחדל: true)
+
+**לבדוק שרץ**:
+```sql
+SELECT column_name
+FROM information_schema.columns
+WHERE table_name = 'campaigns'
+AND column_name IN ('active_hours_start', 'active_hours_end', 'respect_active_hours');
+```
+
+אמור להחזיר 3 שורות.
+
+---
+
 ### תאריך: 14.01.2026

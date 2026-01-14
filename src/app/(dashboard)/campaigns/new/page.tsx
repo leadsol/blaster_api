@@ -88,6 +88,7 @@ function NewCampaignContent() {
   // Checkboxes
   const [hasExclusionList, setHasExclusionList] = useState(false)
   const [hasScheduling, setHasScheduling] = useState(false)
+  const [hasActiveHours, setHasActiveHours] = useState(true) // Default to true
   const [hasPause, setHasPause] = useState(false)
   const [createNewList, setCreateNewList] = useState(false)
   const [assignToExistingList, setAssignToExistingList] = useState(false)
@@ -97,6 +98,8 @@ function NewCampaignContent() {
   // Expanded fields
   const [scheduleDate, setScheduleDate] = useState('')
   const [scheduleTime, setScheduleTime] = useState('')
+  const [activeHoursStart, setActiveHoursStart] = useState('09:00')
+  const [activeHoursEnd, setActiveHoursEnd] = useState('18:00')
   const [pauseAfterMessages, setPauseAfterMessages] = useState(0)
   const [pauseDuration, setPauseDuration] = useState(0)
   const [pauseTimeUnit, setPauseTimeUnit] = useState<'seconds' | 'minutes' | 'hours'>('seconds')
@@ -158,6 +161,7 @@ function NewCampaignContent() {
 
   // Tooltip state
   const [showPauseTooltip, setShowPauseTooltip] = useState(false)
+  const [showActiveHoursTooltip, setShowActiveHoursTooltip] = useState(false)
   const [showTimingInfo, setShowTimingInfo] = useState(false)
   const [showSettingsTooltip, setShowSettingsTooltip] = useState(false)
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false)
@@ -314,6 +318,7 @@ function NewCampaignContent() {
       allColumns,
       hasExclusionList,
       hasScheduling,
+      hasActiveHours,
       hasPause,
       createNewList,
       assignToExistingList,
@@ -321,6 +326,8 @@ function NewCampaignContent() {
       selectedDevices,
       scheduleDate,
       scheduleTime,
+      activeHoursStart,
+      activeHoursEnd,
       pauseAfterMessages,
       pauseDuration,
       pauseTimeUnit,
@@ -387,6 +394,7 @@ function NewCampaignContent() {
       if (draftData.allColumns) setAllColumns(draftData.allColumns)
       if (draftData.hasExclusionList !== undefined) setHasExclusionList(draftData.hasExclusionList)
       if (draftData.hasScheduling !== undefined) setHasScheduling(draftData.hasScheduling)
+      if (draftData.hasActiveHours !== undefined) setHasActiveHours(draftData.hasActiveHours)
       if (draftData.hasPause !== undefined) setHasPause(draftData.hasPause)
       if (draftData.createNewList !== undefined) setCreateNewList(draftData.createNewList)
       if (draftData.assignToExistingList !== undefined) setAssignToExistingList(draftData.assignToExistingList)
@@ -394,6 +402,8 @@ function NewCampaignContent() {
       if (draftData.selectedDevices) setSelectedDevices(draftData.selectedDevices)
       if (draftData.scheduleDate) setScheduleDate(draftData.scheduleDate)
       if (draftData.scheduleTime) setScheduleTime(draftData.scheduleTime)
+      if (draftData.activeHoursStart) setActiveHoursStart(draftData.activeHoursStart)
+      if (draftData.activeHoursEnd) setActiveHoursEnd(draftData.activeHoursEnd)
       if (draftData.pauseAfterMessages) setPauseAfterMessages(draftData.pauseAfterMessages)
       if (draftData.pauseDuration) setPauseDuration(draftData.pauseDuration)
       if (draftData.pauseTimeUnit) setPauseTimeUnit(draftData.pauseTimeUnit)
@@ -440,9 +450,9 @@ function NewCampaignContent() {
     return () => clearTimeout(timeoutId)
   }, [
     name, messageTemplate, recipients, exclusionList, allColumns,
-    hasExclusionList, hasScheduling, hasPause, createNewList,
+    hasExclusionList, hasScheduling, hasActiveHours, hasPause, createNewList,
     assignToExistingList, hasMultiDevice, selectedDevices,
-    scheduleDate, scheduleTime, pauseAfterMessages, pauseDuration,
+    scheduleDate, scheduleTime, activeHoursStart, activeHoursEnd, pauseAfterMessages, pauseDuration,
     pauseTimeUnit, newListName, selectedExistingList, selectedConnection,
     delayMin, delayMax, hasMessageVariations, variationCount, messageVariations,
     surveyQuestion, surveyOptions, allowMultipleAnswers, attachedMedia
@@ -626,6 +636,17 @@ function NewCampaignContent() {
       }
     }
 
+    // Active hours settings
+    if (campaign.respect_active_hours !== undefined) {
+      setHasActiveHours(campaign.respect_active_hours)
+    }
+    if (campaign.active_hours_start) {
+      setActiveHoursStart(campaign.active_hours_start.slice(0, 5)) // Extract HH:MM from TIME
+    }
+    if (campaign.active_hours_end) {
+      setActiveHoursEnd(campaign.active_hours_end.slice(0, 5)) // Extract HH:MM from TIME
+    }
+
     // List settings
     if (campaign.new_list_name) {
       setCreateNewList(true)
@@ -765,6 +786,17 @@ function NewCampaignContent() {
         setPauseDuration(campaign.pause_seconds)
         setPauseTimeUnit('seconds')
       }
+    }
+
+    // Active hours settings
+    if (campaign.respect_active_hours !== undefined) {
+      setHasActiveHours(campaign.respect_active_hours)
+    }
+    if (campaign.active_hours_start) {
+      setActiveHoursStart(campaign.active_hours_start.slice(0, 5)) // Extract HH:MM from TIME
+    }
+    if (campaign.active_hours_end) {
+      setActiveHoursEnd(campaign.active_hours_end.slice(0, 5)) // Extract HH:MM from TIME
     }
 
     // List settings - don't copy list assignment
@@ -1215,6 +1247,9 @@ function NewCampaignContent() {
         delay_max: delayMax,
         pause_after_messages: hasPause ? pauseAfterMessages : null,
         pause_seconds: hasPause ? pauseSeconds : null,
+        respect_active_hours: hasActiveHours,
+        active_hours_start: hasActiveHours ? activeHoursStart : null,
+        active_hours_end: hasActiveHours ? activeHoursEnd : null,
         new_list_name: createNewList ? newListName : null,
         existing_list_id: assignToExistingList ? selectedExistingList : null,
         multi_device: hasMultiDevice,
@@ -1383,6 +1418,9 @@ function NewCampaignContent() {
         delay_max: delayMax,
         pause_after_messages: hasPause ? pauseAfterMessages : null,
         pause_seconds: hasPause ? pauseSeconds : null,
+        respect_active_hours: hasActiveHours,
+        active_hours_start: hasActiveHours ? activeHoursStart : null,
+        active_hours_end: hasActiveHours ? activeHoursEnd : null,
         new_list_name: createNewList ? newListName : null,
         existing_list_id: assignToExistingList ? selectedExistingList : null,
         multi_device: hasMultiDevice,
@@ -2778,21 +2816,21 @@ function NewCampaignContent() {
 
       {/* Mobile Step 2 - iPhone Preview & Message (shown only on mobile when step 2) */}
       {mobileStep === 2 && (
-        <div className="lg:hidden flex flex-col gap-4 pb-6">
+        <div className="lg:hidden flex flex-col gap-3 sm:gap-4 pb-6 px-3 sm:px-4 md:px-6">
           {/* Back button */}
           <button
             onClick={() => setMobileStep(1)}
-            className={`self-start flex items-center gap-2 px-4 py-2 rounded-[10px] text-[14px] font-medium ${
+            className={`self-start flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-[10px] text-[13px] sm:text-[14px] md:text-[15px] font-medium ${
               darkMode ? 'bg-[#142241] text-white' : 'bg-white text-[#030733]'
             }`}
           >
-            <ChevronDown className="w-4 h-4 rotate-90" />
+            <ChevronDown className="w-4 h-4 sm:w-[18px] sm:h-[18px] rotate-90" />
             חזור
           </button>
 
           {/* iPhone Preview for Mobile */}
-          <div className="flex justify-center">
-            <div className="relative w-[280px] h-[500px]">
+          <div className="flex justify-center px-2 sm:px-4">
+            <div className="relative w-[260px] h-[460px] sm:w-[280px] sm:h-[500px] md:w-[300px] md:h-[540px]">
               <img
                 src="https://res.cloudinary.com/dimsgvsze/image/upload/v1768252870/yhgqfirwamy9jtrd9bxk_ptizqs.png"
                 alt="iPhone Preview"
@@ -2910,20 +2948,20 @@ function NewCampaignContent() {
           </div>
 
           {/* Message Input for Mobile Step 2 */}
-          <div className="flex flex-col gap-[6px]">
+          <div className="flex flex-col gap-[6px] sm:gap-[8px]">
             {/* Variables chips */}
             {recipients.length > 0 && allColumns.length > 0 && (
-              <div className="flex items-center gap-[8px] flex-wrap">
-                <p className={`text-[14px] ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+              <div className="flex items-center gap-[6px] sm:gap-[8px] flex-wrap">
+                <p className={`text-[13px] sm:text-[14px] md:text-[15px] ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
                   <span className="font-semibold">משתנים: </span>
                 </p>
                 {allColumns.map((colName) => (
                   <div
                     key={colName}
-                    className="px-[10px] py-[4px] bg-[#030733] rounded-[7px] cursor-pointer hover:bg-[#0a1628] transition-colors"
+                    className="px-[8px] sm:px-[10px] py-[3px] sm:py-[4px] bg-[#030733] rounded-[7px] cursor-pointer hover:bg-[#0a1628] transition-colors touch-manipulation"
                     onClick={() => setMessageTemplate(prev => prev + `{${colName}}`)}
                   >
-                    <span className="text-white text-[12px]">{colName}</span>
+                    <span className="text-white text-[11px] sm:text-[12px] md:text-[13px]">{colName}</span>
                   </div>
                 ))}
               </div>
@@ -2934,38 +2972,38 @@ function NewCampaignContent() {
               value={messageTemplate}
               onChange={(e) => setMessageTemplate(e.target.value)}
               placeholder="כתוב את ההודעה כאן..."
-              className={`w-full h-[120px] p-4 rounded-[10px] text-[14px] outline-none resize-none ${
+              className={`w-full h-[110px] sm:h-[120px] md:h-[140px] p-3 sm:p-4 rounded-[10px] text-[13px] sm:text-[14px] md:text-[15px] outline-none resize-none ${
                 darkMode ? 'bg-[#142241] text-white placeholder-gray-400' : 'bg-white text-[#030733] placeholder-[#a2a2a2]'
               }`}
             />
 
             {/* Media buttons for mobile */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap">
               <button
                 onClick={() => { setAudioPopupType('audio'); setShowAudioPopup(true); }}
-                className={`flex items-center gap-2 px-3 py-2 rounded-[8px] text-[13px] ${
+                className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-2 sm:py-2.5 h-[44px] rounded-[8px] text-[12px] sm:text-[13px] md:text-[14px] touch-manipulation ${
                   darkMode ? 'bg-[#142241] text-white' : 'bg-white text-[#030733]'
                 }`}
               >
-                <Mic className="w-4 h-4" />
+                <Mic className="w-[16px] h-[16px] sm:w-4 sm:h-4" />
                 הקלטה
               </button>
               <button
                 onClick={() => { setAudioPopupType('image'); setShowAudioPopup(true); }}
-                className={`flex items-center gap-2 px-3 py-2 rounded-[8px] text-[13px] ${
+                className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-2 sm:py-2.5 h-[44px] rounded-[8px] text-[12px] sm:text-[13px] md:text-[14px] touch-manipulation ${
                   darkMode ? 'bg-[#142241] text-white' : 'bg-white text-[#030733]'
                 }`}
               >
-                <Image className="w-4 h-4" />
+                <Image className="w-[16px] h-[16px] sm:w-4 sm:h-4" />
                 תמונה
               </button>
               <button
                 onClick={() => { setAudioPopupType('document'); setShowAudioPopup(true); }}
-                className={`flex items-center gap-2 px-3 py-2 rounded-[8px] text-[13px] ${
+                className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-2 sm:py-2.5 h-[44px] rounded-[8px] text-[12px] sm:text-[13px] md:text-[14px] touch-manipulation ${
                   darkMode ? 'bg-[#142241] text-white' : 'bg-white text-[#030733]'
                 }`}
               >
-                <FileText className="w-4 h-4" />
+                <FileText className="w-[16px] h-[16px] sm:w-4 sm:h-4" />
                 מסמך
               </button>
             </div>
@@ -3010,7 +3048,7 @@ function NewCampaignContent() {
             <button
               onClick={handleSubmit}
               disabled={loading || !name || !selectedConnection || (!messageTemplate && !attachedMedia.type) || recipients.length === 0}
-              className="w-full h-[50px] bg-[#030733] text-white rounded-[10px] text-[16px] font-semibold hover:bg-[#0a1628] transition-colors disabled:opacity-50"
+              className="w-full h-[48px] sm:h-[50px] md:h-[52px] bg-[#030733] text-white rounded-[10px] text-[14px] sm:text-[15px] md:text-[16px] font-semibold hover:bg-[#0a1628] transition-colors disabled:opacity-50 touch-manipulation"
             >
               {loading ? 'שומר...' : 'צור קמפיין'}
             </button>
@@ -3019,12 +3057,12 @@ function NewCampaignContent() {
       )}
 
       {/* iPhone - Fixed Position - Hidden on mobile/tablet (Desktop only) */}
-      <div className="hidden xl:flex absolute left-[10px] 2xl:left-[20px] top-[10px] 2xl:top-[20px] bottom-[10px] 2xl:bottom-[20px] w-[300px] 2xl:w-[350px] items-start justify-center z-10 overflow-hidden">
+      <div className="hidden xl:flex absolute left-[8px] xl:left-[10px] 2xl:left-[20px] top-[8px] xl:top-[10px] 2xl:top-[20px] bottom-[8px] xl:bottom-[10px] 2xl:bottom-[20px] w-[280px] xl:w-[300px] 2xl:w-[350px] items-start justify-center z-10 overflow-hidden">
         <div className="relative" style={{ height: 'calc(100vh - 90px)' }}>
           <img
             src="https://res.cloudinary.com/dimsgvsze/image/upload/v1768252870/yhgqfirwamy9jtrd9bxk_ptizqs.png"
             alt="iPhone Preview"
-            className="h-full w-auto object-contain object-top"
+            className="h-full w-auto object-contain object-top transition-all"
           />
           {/* Message Overlay - Show variations if enabled, otherwise show single message */}
           {hasMessageVariations ? (
@@ -3143,11 +3181,11 @@ function NewCampaignContent() {
         </div>
       </div>
 
-      {/* Save Draft Button - Fixed position below iPhone area (Desktop only) */}
+      {/* Save Draft Button - Centered below iPhone mockup (Desktop only) */}
       <button
         onClick={handleSaveDraft}
         disabled={savingDraft || loading}
-        className="hidden xl:flex fixed left-[10px] 2xl:left-[20px] bottom-[20px] 2xl:bottom-[30px] w-[300px] 2xl:w-[350px] h-[44px] bg-gray-500 hover:bg-gray-600 text-white rounded-[10px] text-[14px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed items-center justify-center gap-2 z-20"
+        className="hidden xl:flex fixed left-[85px] 2xl:left-[102px] bottom-[20px] 2xl:bottom-[30px] w-[150px] 2xl:w-[175px] h-[44px] bg-gray-500 hover:bg-gray-600 text-white rounded-[10px] text-[14px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed items-center justify-center gap-2 z-20"
       >
         {savingDraft ? (
           <>
@@ -3170,13 +3208,13 @@ function NewCampaignContent() {
       </button>
 
       {/* Main Content - Hidden on mobile when step 2 */}
-      <div className={`${mobileStep === 2 ? 'hidden lg:flex' : 'flex'} flex-col lg:flex-row gap-3 lg:gap-[15px] 2xl:gap-[20px] xl:ml-[320px] 2xl:ml-[380px] lg:flex-1 lg:min-h-0`}>
+      <div className={`${mobileStep === 2 ? 'hidden lg:flex' : 'flex'} flex-col lg:flex-row gap-3 sm:gap-4 md:gap-[12px] lg:gap-[15px] xl:gap-[18px] 2xl:gap-[20px] xl:ml-[320px] 2xl:ml-[380px] lg:flex-1 lg:min-h-0 p-3 sm:p-4 md:p-5 lg:p-0`}>
 
         {/* RIGHT SIDE - Form (מימין) */}
-        <div className={`w-full lg:w-[320px] xl:w-[350px] 2xl:w-[400px] flex flex-col gap-4 lg:gap-[20px] xl:gap-[24px] 2xl:gap-[28px] lg:shrink-0 lg:pr-[10px] xl:pr-[15px] relative z-20 lg:overflow-y-auto ${darkMode ? 'dark-scrollbar' : ''}`}>
+        <div className={`w-full lg:w-[320px] xl:w-[350px] 2xl:w-[400px] flex flex-col gap-4 sm:gap-5 md:gap-[18px] lg:gap-[20px] xl:gap-[24px] 2xl:gap-[28px] lg:shrink-0 lg:pr-[10px] xl:pr-[15px] 2xl:pr-[20px] relative z-20 lg:overflow-y-auto ${darkMode ? 'dark-scrollbar' : ''}`}>
           {/* Campaign Name */}
           <div>
-            <p className={`text-[16px] font-semibold mb-[6px] ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+            <p className={`text-[14px] sm:text-[15px] md:text-[16px] lg:text-[16px] xl:text-[17px] font-semibold mb-[6px] md:mb-[7px] ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
               הזנת שם לקמפיין
             </p>
             <input
@@ -3184,7 +3222,7 @@ function NewCampaignContent() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="דוגמא: לקוחות שרכשו - הפצה 28/03/2024"
-              className={`w-full h-[40px] px-[14px] rounded-[10px] text-[13px] outline-none ${
+              className={`w-full h-[44px] sm:h-[46px] md:h-[48px] lg:h-[40px] xl:h-[42px] 2xl:h-[44px] px-[12px] sm:px-[14px] md:px-[16px] lg:px-[14px] rounded-[10px] text-[13px] sm:text-[14px] md:text-[15px] lg:text-[13px] xl:text-[14px] outline-none ${
                 darkMode ? 'bg-[#142241] text-white placeholder-gray-400' : 'bg-white text-[#030733] placeholder-[#a2a2a2]'
               }`}
             />
@@ -3192,17 +3230,17 @@ function NewCampaignContent() {
 
           {/* WhatsApp Connection */}
           <div>
-            <p className={`text-[16px] font-semibold mb-[6px] ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+            <p className={`text-[14px] sm:text-[15px] md:text-[16px] lg:text-[16px] xl:text-[17px] font-semibold mb-[6px] md:mb-[7px] ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
               בחירת חיבור WhatsApp
             </p>
             {connections.length === 0 ? (
-              <div className={`w-full h-[40px] px-[14px] rounded-[10px] text-[13px] flex items-center ${
+              <div className={`w-full h-[44px] sm:h-[46px] md:h-[48px] lg:h-[40px] xl:h-[42px] 2xl:h-[44px] px-[12px] sm:px-[14px] md:px-[16px] lg:px-[14px] rounded-[10px] text-[13px] sm:text-[14px] md:text-[15px] lg:text-[13px] xl:text-[14px] flex items-center ${
                 darkMode ? 'bg-[#142241] text-gray-400' : 'bg-white text-[#a2a2a2]'
               }`}>
                 <span>אין חיבורים זמינים - </span>
                 <button
                   onClick={() => handleNavigateAway('/connections')}
-                  className="text-blue-500 hover:underline mr-1"
+                  className="text-blue-500 hover:underline mr-1 text-[13px] sm:text-[14px]"
                 >
                   הוסף חיבור
                 </button>
@@ -3212,7 +3250,7 @@ function NewCampaignContent() {
                 <select
                   value={selectedConnection}
                   onChange={(e) => setSelectedConnection(e.target.value)}
-                  className={`w-full h-[40px] px-[14px] rounded-[10px] text-[13px] outline-none appearance-none cursor-pointer ${
+                  className={`w-full h-[44px] sm:h-[46px] md:h-[48px] lg:h-[40px] xl:h-[42px] 2xl:h-[44px] px-[12px] sm:px-[14px] md:px-[16px] lg:px-[14px] rounded-[10px] text-[13px] sm:text-[14px] md:text-[15px] lg:text-[13px] xl:text-[14px] outline-none appearance-none cursor-pointer ${
                     darkMode ? 'bg-[#142241] text-white' : 'bg-white text-[#030733]'
                   }`}
                 >
@@ -3222,25 +3260,25 @@ function NewCampaignContent() {
                     </option>
                   ))}
                 </select>
-                <ChevronDown className={`absolute left-[14px] top-1/2 -translate-y-1/2 w-[14px] h-[14px] pointer-events-none ${darkMode ? 'text-gray-400' : 'text-[#030733]'}`} />
+                <ChevronDown className={`absolute left-[12px] sm:left-[14px] top-1/2 -translate-y-1/2 w-[14px] h-[14px] sm:w-[15px] sm:h-[15px] md:w-[16px] md:h-[16px] pointer-events-none ${darkMode ? 'text-gray-400' : 'text-[#030733]'}`} />
               </div>
             )}
           </div>
 
           {/* Load Method */}
           <div>
-            <p className={`text-[16px] font-semibold mb-[6px] ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+            <p className={`text-[14px] sm:text-[15px] md:text-[16px] lg:text-[16px] xl:text-[17px] font-semibold mb-[6px] md:mb-[7px] ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
               איך תרצה לטעון את רשימת הנמענים?
             </p>
             {/* First select - Source type */}
-            <div className="relative mb-[6px]">
+            <div className="relative mb-[6px] md:mb-[8px]">
               <select
                 value={loadMethodDetails}
                 onChange={(e) => {
                   setLoadMethodDetails(e.target.value)
                   setLoadMethod('') // Reset second select when first changes
                 }}
-                className={`w-full h-[40px] px-[14px] rounded-[10px] text-[13px] outline-none appearance-none cursor-pointer ${
+                className={`w-full h-[44px] sm:h-[46px] md:h-[48px] lg:h-[40px] xl:h-[42px] 2xl:h-[44px] px-[12px] sm:px-[14px] md:px-[16px] lg:px-[14px] rounded-[10px] text-[13px] sm:text-[14px] md:text-[15px] lg:text-[13px] xl:text-[14px] outline-none appearance-none cursor-pointer ${
                   darkMode ? 'bg-[#142241] text-gray-400' : 'bg-white text-[#a2a2a2]'
                 } ${loadMethodDetails ? (darkMode ? 'text-white' : 'text-[#030733]') : ''}`}
               >
@@ -3250,14 +3288,15 @@ function NewCampaignContent() {
                 <option value="contactList">רשימת לקוחות קיימת</option>
                 <option value="sheets">Google Sheets</option>
               </select>
-              <ChevronDown className={`absolute left-[14px] top-1/2 -translate-y-1/2 w-[14px] h-[14px] pointer-events-none ${darkMode ? 'text-gray-400' : 'text-[#030733]'}`} />
+              <ChevronDown className={`absolute left-[12px] sm:left-[14px] top-1/2 -translate-y-1/2 w-[14px] h-[14px] sm:w-[15px] sm:h-[15px] md:w-[16px] md:h-[16px] pointer-events-none ${darkMode ? 'text-gray-400' : 'text-[#030733]'}`} />
             </div>
 
             {/* Second section - depends on first selection */}
             {loadMethodDetails === 'excel' && (
-              <label className={`w-full h-[40px] px-[14px] rounded-[10px] text-[13px] flex items-center justify-center cursor-pointer border-2 border-dashed ${
+              <label className={`w-full h-[44px] sm:h-[46px] md:h-[48px] lg:h-[40px] xl:h-[42px] 2xl:h-[44px] px-[12px] sm:px-[14px] md:px-[16px] lg:px-[14px] rounded-[10px] text-[13px] sm:text-[14px] md:text-[15px] lg:text-[13px] xl:text-[14px] flex items-center justify-center cursor-pointer border-2 border-dashed ${
                 darkMode ? 'bg-[#142241] border-gray-600 text-gray-400 hover:border-gray-400' : 'bg-white border-gray-300 text-[#a2a2a2] hover:border-gray-400'
               }`}>
+                <Upload className="w-[16px] h-[16px] sm:w-[18px] sm:h-[18px] md:w-[20px] md:h-[20px] ml-2" />
                 <span>לחץ להעלאת קובץ Excel</span>
                 <input
                   type="file"
@@ -3269,28 +3308,28 @@ function NewCampaignContent() {
             )}
 
             {loadMethodDetails === 'sheets' && (
-              <div className="flex flex-col gap-[6px]">
-                <div className="flex gap-[6px]">
+              <div className="flex flex-col gap-[6px] md:gap-[8px]">
+                <div className="flex gap-[6px] sm:gap-[8px]">
                   <input
                     type="text"
                     value={sheetsUrl}
                     onChange={(e) => setSheetsUrl(e.target.value)}
                     placeholder="הדבק קישור ל-Google Sheets"
-                    className={`flex-1 h-[40px] px-[14px] rounded-[10px] text-[13px] outline-none ${
+                    className={`flex-1 h-[44px] sm:h-[46px] md:h-[48px] lg:h-[40px] xl:h-[42px] 2xl:h-[44px] px-[12px] sm:px-[14px] md:px-[16px] lg:px-[14px] rounded-[10px] text-[13px] sm:text-[14px] md:text-[15px] lg:text-[13px] xl:text-[14px] outline-none ${
                       darkMode ? 'bg-[#142241] text-white placeholder-gray-400' : 'bg-white text-[#030733] placeholder-[#a2a2a2]'
                     }`}
                   />
                   <button
                     onClick={handleLoadGoogleSheets}
                     disabled={sheetsLoading || !sheetsUrl.trim()}
-                    className={`h-[40px] px-[16px] rounded-[10px] text-[13px] font-medium transition-colors disabled:opacity-50 ${
+                    className={`h-[44px] sm:h-[46px] md:h-[48px] lg:h-[40px] xl:h-[42px] 2xl:h-[44px] px-[14px] sm:px-[16px] md:px-[18px] lg:px-[16px] rounded-[10px] text-[13px] sm:text-[14px] md:text-[15px] lg:text-[13px] xl:text-[14px] font-medium transition-colors disabled:opacity-50 ${
                       darkMode ? 'bg-[#030733] text-white hover:bg-[#0a1628]' : 'bg-[#030733] text-white hover:bg-[#1a2d4a]'
                     }`}
                   >
                     {sheetsLoading ? 'טוען...' : 'טען'}
                   </button>
                 </div>
-                <p className={`text-[11px] ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                <p className={`text-[10px] sm:text-[11px] md:text-[12px] ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                   הגיליון חייב להיות ציבורי (כל מי שיש לו את הקישור יכול לצפות)
                 </p>
               </div>
@@ -3299,7 +3338,7 @@ function NewCampaignContent() {
             {loadMethodDetails === 'manual' && (
               <button
                 onClick={() => setShowManualEntryPopup(true)}
-                className={`w-full h-[40px] px-[14px] rounded-[10px] text-[13px] font-medium ${
+                className={`w-full h-[44px] sm:h-[46px] md:h-[48px] lg:h-[40px] xl:h-[42px] 2xl:h-[44px] px-[12px] sm:px-[14px] md:px-[16px] lg:px-[14px] rounded-[10px] text-[13px] sm:text-[14px] md:text-[15px] lg:text-[13px] xl:text-[14px] font-medium ${
                   darkMode ? 'bg-[#142241] text-white hover:bg-[#1a2d4a]' : 'bg-white text-[#030733] hover:bg-gray-100'
                 }`}
               >
@@ -3498,6 +3537,92 @@ function NewCampaignContent() {
             )}
           </div>
 
+          {/* Checkbox 2.5 - Active Hours */}
+          <div className="flex flex-col gap-[6px]">
+            <div className="flex items-center gap-[6px]">
+              <Checkbox checked={hasActiveHours} onChange={setHasActiveHours} />
+              <span className={`text-[16px] font-semibold ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+                שעות פעילות
+              </span>
+              <div
+                className="relative"
+                onMouseEnter={() => setShowActiveHoursTooltip(true)}
+                onMouseLeave={() => setShowActiveHoursTooltip(false)}
+              >
+                <div className={`w-[15px] h-[15px] rounded-full flex items-center justify-center text-[11px] cursor-help ${
+                  darkMode ? 'bg-white text-[#030733]' : 'bg-[#030733] text-[#f2f3f8]'
+                }`}>
+                  ?
+                </div>
+                {/* Tooltip */}
+                {showActiveHoursTooltip && (
+                  <div className="absolute right-0 sm:right-[-80px] top-[22px] w-[250px] sm:w-[300px] p-3 sm:p-[15px] bg-[#030733] rounded-[10px] z-50 animate-fade-in" style={{ direction: 'rtl' }}>
+                    <p className="text-white text-[12px] sm:text-[14px] font-semibold mb-[6px] sm:mb-[8px]">מה זה שעות פעילות?</p>
+                    <p className="text-[#F2F3F8] text-[11px] sm:text-[14px] font-light leading-[1.5] sm:leading-[1.6]">
+                      קבע את השעות שבהן ההודעות יישלחו.
+                      <br /><br />
+                      לדוגמה: אם תקבע &quot;09:00 - 18:00&quot; - המערכת תשלח הודעות רק בין השעות האלו.
+                      <br /><br />
+                      הודעות שמתוזמנות מחוץ לשעות אלו ימתינו עד שעת הפעילות הבאה.
+                      <br /><br />
+                      זה עוזר להימנע משליחת הודעות בשעות לא נוחות ומשפר את שיעור התגובה.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+            {hasActiveHours && (
+              <div className="flex gap-[12px] items-center flex-wrap">
+                <span className={`text-[14px] font-medium ${darkMode ? 'text-white' : 'text-[#030733]'}`}>משעה</span>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={activeHoursStart}
+                    readOnly
+                    placeholder="09:00"
+                    onClick={(e) => {
+                      const hiddenInput = e.currentTarget.nextElementSibling as HTMLInputElement
+                      hiddenInput?.showPicker?.()
+                    }}
+                    className={`w-[100px] h-[44px] pr-[14px] pl-[40px] rounded-[10px] text-[15px] outline-none cursor-pointer text-center ${
+                      darkMode ? 'bg-[#142241] text-white placeholder-gray-400' : 'bg-white text-[#030733] placeholder-[#a2a2a2]'
+                    }`}
+                  />
+                  <input
+                    type="time"
+                    value={activeHoursStart}
+                    onChange={(e) => setActiveHoursStart(e.target.value)}
+                    className="absolute opacity-0 w-0 h-0"
+                  />
+                  <Clock className={`absolute left-[14px] top-1/2 -translate-y-1/2 w-[16px] h-[16px] pointer-events-none ${darkMode ? 'text-white' : 'text-[#030733]'}`} />
+                </div>
+                <span className={`text-[14px] font-medium ${darkMode ? 'text-white' : 'text-[#030733]'}`}>עד שעה</span>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={activeHoursEnd}
+                    readOnly
+                    placeholder="18:00"
+                    onClick={(e) => {
+                      const hiddenInput = e.currentTarget.nextElementSibling as HTMLInputElement
+                      hiddenInput?.showPicker?.()
+                    }}
+                    className={`w-[100px] h-[44px] pr-[14px] pl-[40px] rounded-[10px] text-[15px] outline-none cursor-pointer text-center ${
+                      darkMode ? 'bg-[#142241] text-white placeholder-gray-400' : 'bg-white text-[#030733] placeholder-[#a2a2a2]'
+                    }`}
+                  />
+                  <input
+                    type="time"
+                    value={activeHoursEnd}
+                    onChange={(e) => setActiveHoursEnd(e.target.value)}
+                    className="absolute opacity-0 w-0 h-0"
+                  />
+                  <Clock className={`absolute left-[14px] top-1/2 -translate-y-1/2 w-[16px] h-[16px] pointer-events-none ${darkMode ? 'text-white' : 'text-[#030733]'}`} />
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Checkbox 3 - Pause */}
           <div className="flex flex-col gap-[6px]">
             <div className="flex items-center gap-[6px]">
@@ -3647,12 +3772,12 @@ function NewCampaignContent() {
         </div>
 
         {/* MIDDLE - White Box with Recipients */}
-        <div className={`w-full lg:flex-1 lg:min-w-[500px] lg:max-w-[800px] 2xl:max-w-[900px] min-h-[250px] max-h-[400px] lg:max-h-none lg:min-h-[350px] ${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[15px] flex flex-col overflow-hidden`}>
+        <div className={`w-full lg:flex-1 lg:min-w-[500px] lg:max-w-[800px] xl:max-w-[850px] 2xl:max-w-[900px] min-h-[250px] sm:min-h-[280px] md:min-h-[300px] max-h-[400px] sm:max-h-[450px] md:max-h-[500px] lg:max-h-none lg:min-h-[350px] xl:min-h-[400px] ${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[12px] sm:rounded-[13px] md:rounded-[14px] lg:rounded-[15px] flex flex-col overflow-hidden shadow-sm`}>
           {/* Tabs */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-[9px] pt-4 sm:pt-[20px] px-3 sm:px-[22px]">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-[8px] md:gap-[9px] lg:gap-[10px] pt-3 sm:pt-[16px] md:pt-[18px] lg:pt-[20px] px-3 sm:px-[16px] md:px-[19px] lg:px-[22px]">
             <button
               onClick={() => setActiveTab('recipients')}
-              className={`w-full sm:w-[350px] py-[10px] sm:py-[11px] rounded-[10px] text-[14px] sm:text-[16px] transition-colors ${
+              className={`w-full sm:w-[300px] md:w-[320px] lg:w-[350px] h-[44px] sm:h-[46px] md:h-[48px] lg:h-auto py-[10px] sm:py-[10px] md:py-[11px] lg:py-[11px] rounded-[10px] text-[13px] sm:text-[14px] md:text-[15px] lg:text-[16px] transition-colors ${
                 activeTab === 'recipients'
                   ? 'bg-[#030733] text-white font-semibold'
                   : darkMode ? 'bg-[#1a2d4a] text-white' : 'bg-[#f2f3f8] text-[#030733]'
@@ -3662,7 +3787,7 @@ function NewCampaignContent() {
             </button>
             <button
               onClick={() => setActiveTab('exclusion')}
-              className={`w-full sm:w-[235px] py-[10px] sm:py-[11px] rounded-[10px] text-[14px] sm:text-[16px] transition-colors ${
+              className={`w-full sm:w-[200px] md:w-[220px] lg:w-[235px] h-[44px] sm:h-[46px] md:h-[48px] lg:h-auto py-[10px] sm:py-[10px] md:py-[11px] lg:py-[11px] rounded-[10px] text-[13px] sm:text-[14px] md:text-[15px] lg:text-[16px] transition-colors ${
                 activeTab === 'exclusion'
                   ? 'bg-[#030733] text-white font-semibold'
                   : darkMode ? 'bg-[#1a2d4a] text-white' : 'bg-[#f2f3f8] text-[#030733]'
@@ -3673,10 +3798,10 @@ function NewCampaignContent() {
           </div>
 
           {/* Search and Actions */}
-          <div className="flex items-center gap-[6px] px-[22px] py-[12px]">
+          <div className="flex items-center gap-[4px] sm:gap-[6px] md:gap-[8px] px-3 sm:px-[16px] md:px-[19px] lg:px-[22px] py-2 sm:py-[10px] md:py-[12px]">
             {/* Search - shrinks to icon when settings are open (rightmost in RTL) */}
-            <div className={`h-[47px] ${darkMode ? 'bg-[#1a2d4a]' : 'bg-[#f2f3f8]'} rounded-[8px] flex items-center transition-all duration-300 ${
-              showAdvancedSettings ? 'w-[47px] justify-center px-0' : 'flex-1 px-[15px]'
+            <div className={`h-[44px] sm:h-[46px] md:h-[47px] ${darkMode ? 'bg-[#1a2d4a]' : 'bg-[#f2f3f8]'} rounded-[8px] flex items-center transition-all duration-300 ${
+              showAdvancedSettings ? 'w-[44px] sm:w-[46px] md:w-[47px] justify-center px-0' : 'flex-1 px-[12px] sm:px-[14px] md:px-[15px]'
             }`}>
               {!showAdvancedSettings && (
                 <input
@@ -3684,12 +3809,12 @@ function NewCampaignContent() {
                   value={activeTab === 'recipients' ? searchQuery : exclusionSearchQuery}
                   onChange={(e) => activeTab === 'recipients' ? setSearchQuery(e.target.value) : setExclusionSearchQuery(e.target.value)}
                   placeholder={activeTab === 'recipients' ? 'חפש נמענים' : 'חפש מספר...'}
-                  className={`flex-1 bg-transparent outline-none text-[14px] ${
+                  className={`flex-1 bg-transparent outline-none text-[13px] sm:text-[14px] md:text-[15px] ${
                     darkMode ? 'text-white placeholder-gray-400' : 'text-[#505050] placeholder-[#505050]'
                   }`}
                 />
               )}
-              <Search className={`w-[20px] h-[20px] ${darkMode ? 'text-white' : 'text-[#030733]'}`} />
+              <Search className={`w-[18px] h-[18px] sm:w-[19px] sm:h-[19px] md:w-[20px] md:h-[20px] ${darkMode ? 'text-white' : 'text-[#030733]'} flex-shrink-0`} />
             </div>
 
             {/* Settings button - to the left of search, expands when active with X inside */}
@@ -3700,23 +3825,23 @@ function NewCampaignContent() {
             >
               <button
                 onClick={() => setShowAdvancedSettings(!showAdvancedSettings)}
-                className={`h-[47px] rounded-[8px] flex items-center transition-all duration-500 ease-out ${
+                className={`h-[44px] sm:h-[46px] md:h-[47px] rounded-[8px] flex items-center transition-all duration-500 ease-out ${
                   showAdvancedSettings
-                    ? 'bg-[#030733] w-full px-[12px] flex-row-reverse justify-between'
-                    : darkMode ? 'bg-[#1a2d4a] w-[47px] justify-center' : 'bg-[#f2f3f8] w-[47px] justify-center'
+                    ? 'bg-[#030733] w-full px-[10px] sm:px-[12px] flex-row-reverse justify-between'
+                    : darkMode ? 'bg-[#1a2d4a] w-[44px] sm:w-[46px] md:w-[47px] justify-center' : 'bg-[#f2f3f8] w-[44px] sm:w-[46px] md:w-[47px] justify-center'
                 }`}
               >
                 {/* X on the left side (appears left due to flex-row-reverse) */}
                 {showAdvancedSettings && (
-                  <X className="w-[18px] h-[18px] text-white flex-shrink-0" />
+                  <X className="w-[16px] h-[16px] sm:w-[17px] sm:h-[17px] md:w-[18px] md:h-[18px] text-white flex-shrink-0" />
                 )}
                 {/* Gear icon + text grouped together on the right */}
                 <div className={`flex items-center gap-[3px] ${showAdvancedSettings ? '' : 'contents'}`}>
-                  <svg width="23" height="23" viewBox="0 0 23 23" fill="none" className="flex-shrink-0">
+                  <svg width="20" height="20" viewBox="0 0 23 23" fill="none" className="flex-shrink-0 sm:w-[21px] sm:h-[21px] md:w-[23px] md:h-[23px]">
                     <path fillRule="evenodd" clipRule="evenodd" d="M10.6167 2.15625C9.73793 2.15625 8.98851 2.79162 8.8438 3.65796L8.67322 4.68529C8.65405 4.80029 8.56301 4.93446 8.3886 5.01879C8.06022 5.17664 7.74434 5.35925 7.44368 5.56504C7.2846 5.67525 7.1236 5.68579 7.01243 5.64458L6.0378 5.2785C5.63937 5.12923 5.20089 5.12618 4.80042 5.26991C4.39995 5.41364 4.06347 5.69481 3.85089 6.06337L2.9673 7.59383C2.75464 7.96218 2.67953 8.39402 2.75534 8.81253C2.83114 9.23105 3.05295 9.60911 3.3813 9.87946L4.1863 10.5426C4.27735 10.6174 4.34922 10.7621 4.33389 10.9547C4.30658 11.318 4.30658 11.6829 4.33389 12.0462C4.34826 12.2379 4.27735 12.3836 4.18726 12.4583L3.3813 13.1215C3.05295 13.3918 2.83114 13.7699 2.75534 14.1884C2.67953 14.6069 2.75464 15.0388 2.9673 15.4071L3.85089 16.9376C4.06362 17.306 4.40016 17.5869 4.80062 17.7305C5.20108 17.874 5.63948 17.8709 6.0378 17.7215L7.01435 17.3554C7.12455 17.3142 7.28555 17.3257 7.4456 17.434C7.7446 17.6391 8.05989 17.8221 8.38955 17.9802C8.56397 18.0646 8.65501 18.1987 8.67418 18.3157L8.84476 19.342C8.98947 20.2084 9.73889 20.8438 10.6177 20.8438H12.3848C13.2627 20.8438 14.0131 20.2084 14.1578 19.342L14.3283 18.3147C14.3475 18.1997 14.4376 18.0655 14.613 17.9802C14.9426 17.8221 15.2579 17.6391 15.5569 17.434C15.717 17.3247 15.878 17.3142 15.9882 17.3554L16.9657 17.7215C17.3639 17.8703 17.8019 17.873 18.202 17.7293C18.602 17.5856 18.9382 17.3048 19.1507 16.9366L20.0352 15.4062C20.2479 15.0378 20.323 14.606 20.2472 14.1875C20.1714 13.7689 19.9496 13.3909 19.6212 13.1205L18.8162 12.4574C18.7252 12.3826 18.6533 12.2379 18.6686 12.0453C18.6959 11.682 18.6959 11.3171 18.6686 10.9537C18.6533 10.7621 18.7252 10.6164 18.8153 10.5417L19.6203 9.8785C20.2988 9.32075 20.4741 8.35475 20.0352 7.59287L19.1516 6.06242C18.9389 5.69402 18.6024 5.41305 18.2019 5.2695C17.8014 5.12596 17.363 5.12915 16.9647 5.2785L15.9872 5.64458C15.878 5.68579 15.717 5.67429 15.5569 5.56504C15.2566 5.35928 14.941 5.17667 14.613 5.01879C14.4376 4.93542 14.3475 4.80125 14.3283 4.68529L14.1568 3.65796C14.0869 3.23827 13.8704 2.857 13.5457 2.58201C13.2211 2.30701 12.8094 2.15614 12.3839 2.15625H10.6177H10.6167ZM11.5003 15.0938C12.4534 15.0938 13.3675 14.7151 14.0415 14.0412C14.7154 13.3672 15.0941 12.4531 15.0941 11.5C15.0941 10.5469 14.7154 9.63279 14.0415 8.95883C13.3675 8.28488 12.4534 7.90625 11.5003 7.90625C10.5472 7.90625 9.6331 8.28488 8.95914 8.95883C8.28518 9.63279 7.90655 10.5469 7.90655 11.5C7.90655 12.4531 8.28518 13.3672 8.95914 14.0412C9.6331 14.7151 10.5472 15.0938 11.5003 15.0938Z" fill={showAdvancedSettings ? 'white' : '#949494'}/>
                   </svg>
                   {showAdvancedSettings && (
-                    <span className="text-white text-[16px] whitespace-nowrap">הגדרות מתקדמות</span>
+                    <span className="text-white text-[14px] sm:text-[15px] md:text-[16px] whitespace-nowrap">הגדרות מתקדמות</span>
                   )}
                 </div>
               </button>
@@ -4459,14 +4584,14 @@ function NewCampaignContent() {
 
       {/* Mobile "Next" Button - Only shown on mobile step 1 */}
       {mobileStep === 1 && (
-        <div className="lg:hidden mt-4 pb-6">
+        <div className="lg:hidden mt-3 sm:mt-4 pb-5 sm:pb-6 px-3 sm:px-4 md:px-6">
           <button
             onClick={() => setMobileStep(2)}
             disabled={!name || recipients.length === 0}
-            className="w-full h-[50px] bg-[#030733] text-white rounded-[10px] text-[16px] font-semibold hover:bg-[#0a1628] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+            className="w-full h-[48px] sm:h-[50px] md:h-[52px] bg-[#030733] text-white rounded-[10px] text-[14px] sm:text-[15px] md:text-[16px] font-semibold hover:bg-[#0a1628] transition-colors disabled:opacity-50 flex items-center justify-center gap-2 touch-manipulation"
           >
             המשך לכתיבת הודעה
-            <ChevronDown className="w-5 h-5 rotate-90" />
+            <ChevronDown className="w-[18px] h-[18px] sm:w-5 sm:h-5 rotate-90" />
           </button>
         </div>
       )}
@@ -4764,20 +4889,20 @@ function NewCampaignContent() {
 
       {/* Media Upload Popup (Audio/Document/Image) */}
       {showAudioPopup && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => { cancelRecording(); setShowAudioPopup(false); }}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-3 sm:p-4 md:p-6" onClick={() => { cancelRecording(); setShowAudioPopup(false); }}>
           <div
-            className={`w-full max-w-[400px] rounded-[15px] p-5 ${darkMode ? 'bg-[#142241]' : 'bg-white'}`}
+            className={`w-full max-w-[340px] sm:max-w-[380px] md:max-w-[400px] rounded-[12px] sm:rounded-[14px] md:rounded-[15px] p-4 sm:p-5 md:p-6 ${darkMode ? 'bg-[#142241]' : 'bg-white'} shadow-xl`}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="flex items-center justify-between mb-5">
+            <div className="flex items-center justify-between mb-4 sm:mb-5">
               <button
                 onClick={() => { cancelRecording(); setShowAudioPopup(false); }}
-                className={`p-1 rounded-full transition-colors ${darkMode ? 'hover:bg-[#1e3a5f] text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}
+                className={`p-1 sm:p-1.5 rounded-full transition-colors touch-manipulation ${darkMode ? 'hover:bg-[#1e3a5f] text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}
               >
-                <X className="w-5 h-5" />
+                <X className="w-[18px] h-[18px] sm:w-5 sm:h-5 md:w-6 md:h-6" />
               </button>
-              <h3 className={`text-[18px] font-semibold ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+              <h3 className={`text-[16px] sm:text-[17px] md:text-[18px] font-semibold ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
                 {audioPopupType === 'audio' ? 'הודעה קולית' :
                  audioPopupType === 'document' ? 'מסמך' :
                  audioPopupType === 'camera' ? 'מצלמה' :

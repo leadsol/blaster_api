@@ -125,6 +125,16 @@ const resources: Resource[] = [
     duration: '15 דקות',
     isNew: true,
   },
+  {
+    id: '11',
+    title: 'שעות פעילות - תזמון חכם של הודעות',
+    description: 'למד כיצד להגדיר שעות פעילות לקמפיינים כדי לשלוח הודעות רק בשעות מסוימות ביום',
+    type: 'guide',
+    category: 'messaging',
+    duration: '6 דקות',
+    isFeatured: true,
+    isNew: true,
+  },
 ]
 
 const getTypeIcon = (type: Resource['type']) => {

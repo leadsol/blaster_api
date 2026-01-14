@@ -189,44 +189,44 @@ export default function CampaignsPage() {
   }, [selectedCampaign?.id])
 
   return (
-    <div className="p-3 sm:p-4 lg:p-6 h-full overflow-y-auto" dir="rtl">
+    <div className="p-2 sm:p-3 md:p-4 lg:p-5 xl:p-6 2xl:p-8 h-full overflow-y-auto" dir="rtl">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 mb-4 sm:mb-6">
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-4 w-full sm:w-auto">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3 md:gap-4 mb-3 sm:mb-4 md:mb-5 lg:mb-6">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 md:gap-4 w-full sm:w-auto">
           <div className="relative flex-1 sm:flex-none">
-            <Search className="w-5 h-5 absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <Search className="w-4 h-4 sm:w-5 sm:h-5 md:w-5 md:h-5 absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
               placeholder="חפש קמפיינים לפי שם..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pr-10 pl-4 py-2 border border-gray-200 rounded-lg bg-white/5 text-white placeholder-gray-400 w-full sm:w-60 lg:w-80 focus:outline-none focus:ring-2 focus:ring-[#25D366]"
+              className="pr-8 sm:pr-10 pl-3 sm:pl-4 py-1.5 sm:py-2 md:py-2.5 border border-gray-200 rounded-md sm:rounded-lg bg-white/5 text-white placeholder-gray-400 w-full sm:w-48 md:w-60 lg:w-72 xl:w-80 text-xs sm:text-sm md:text-base focus:outline-none focus:ring-2 focus:ring-[#25D366]"
             />
           </div>
-          <select className="px-4 py-2 border border-gray-200 rounded-lg bg-white/5 text-white focus:outline-none">
+          <select className="px-3 sm:px-4 py-1.5 sm:py-2 md:py-2.5 border border-gray-200 rounded-md sm:rounded-lg bg-white/5 text-white text-xs sm:text-sm md:text-base focus:outline-none">
             <option value="">חיבור</option>
           </select>
         </div>
         <Link
           href="/campaigns/new"
-          className="flex items-center justify-center gap-2 bg-[#25D366] text-white px-4 py-2 rounded-lg hover:bg-[#20bd5a] transition-colors w-full sm:w-auto text-sm sm:text-base"
+          className="flex items-center justify-center gap-1.5 sm:gap-2 bg-[#25D366] text-white px-3 sm:px-4 md:px-5 py-1.5 sm:py-2 md:py-2.5 rounded-md sm:rounded-lg hover:bg-[#20bd5a] transition-colors w-full sm:w-auto text-xs sm:text-sm md:text-base"
         >
-          <Plus className="w-5 h-5" />
+          <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
           <span>צור קמפיין חדש</span>
         </Link>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4 md:gap-5 lg:gap-6 xl:gap-7">
         {/* Campaigns List */}
-        <div className="lg:col-span-5 bg-white/5 rounded-xl overflow-hidden">
-          <div className="max-h-[400px] lg:max-h-[600px] overflow-y-auto">
+        <div className="lg:col-span-5 xl:col-span-5 2xl:col-span-5 bg-white/5 rounded-lg sm:rounded-xl overflow-hidden">
+          <div className="max-h-[350px] sm:max-h-[400px] md:max-h-[500px] lg:max-h-[550px] xl:max-h-[600px] overflow-y-auto">
             {loading ? (
-              <div className="p-8 text-center text-gray-400">טוען...</div>
+              <div className="p-6 sm:p-8 text-center text-gray-400 text-sm sm:text-base">טוען...</div>
             ) : filteredCampaigns.length === 0 ? (
-              <div className="p-8 text-center text-gray-400">
-                <Megaphone className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p>אין קמפיינים עדיין</p>
-                <Link href="/campaigns/new" className="text-[#25D366] hover:underline mt-2 block">
+              <div className="p-6 sm:p-8 text-center text-gray-400">
+                <Megaphone className="w-10 h-10 sm:w-12 sm:h-12 mx-auto mb-3 sm:mb-4 opacity-50" />
+                <p className="text-sm sm:text-base">אין קמפיינים עדיין</p>
+                <Link href="/campaigns/new" className="text-[#25D366] hover:underline mt-2 block text-xs sm:text-sm">
                   צור קמפיין ראשון
                 </Link>
               </div>
@@ -235,38 +235,38 @@ export default function CampaignsPage() {
                 <div
                   key={campaign.id}
                   onClick={() => setSelectedCampaign(campaign)}
-                  className={`p-4 border-b border-white/10 cursor-pointer transition-colors ${
+                  className={`p-2.5 sm:p-3 md:p-4 border-b border-white/10 cursor-pointer transition-colors ${
                     selectedCampaign?.id === campaign.id
-                      ? 'bg-[#25D366]/10 border-r-4 border-r-[#25D366]'
+                      ? 'bg-[#25D366]/10 border-r-2 sm:border-r-3 md:border-r-4 border-r-[#25D366]'
                       : 'hover:bg-white/5'
                   }`}
                 >
                   <div className="flex items-start justify-between">
-                    <div>
-                      <h3 className="font-medium text-white mb-1">{campaign.name}</h3>
-                      <div className="flex items-center gap-2 text-sm text-gray-400">
-                        <Users className="w-4 h-4" />
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-medium text-white mb-0.5 sm:mb-1 text-xs sm:text-sm md:text-base truncate">{campaign.name}</h3>
+                      <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-400">
+                        <Users className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
                         <span>{campaign.total_recipients} נמענים</span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className={`px-2 py-1 rounded-full text-xs ${statusColors[campaign.status]}`}>
+                    <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+                      <span className={`px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs ${statusColors[campaign.status]}`}>
                         {statusLabels[campaign.status]}
                       </span>
-                      <button className="text-gray-400 hover:text-white">
-                        <MoreVertical className="w-5 h-5" />
+                      <button className="text-gray-400 hover:text-white p-0.5 sm:p-1">
+                        <MoreVertical className="w-4 h-4 sm:w-5 sm:h-5" />
                       </button>
                     </div>
                   </div>
-                  <div className="mt-2 flex items-center gap-4 text-xs text-gray-500">
-                    <span className="flex items-center gap-1">
-                      <Calendar className="w-3 h-3" />
+                  <div className="mt-1.5 sm:mt-2 flex items-center gap-2 sm:gap-3 md:gap-4 text-[10px] sm:text-xs text-gray-500">
+                    <span className="flex items-center gap-0.5 sm:gap-1">
+                      <Calendar className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
                       {campaign.scheduled_at
                         ? format(new Date(campaign.scheduled_at), 'dd/MM/yyyy', { locale: he })
                         : 'לא מתוזמן'}
                     </span>
                     {campaign.contact_lists && (
-                      <span className="text-[#25D366]">
+                      <span className="text-[#25D366] truncate">
                         {(campaign.contact_lists as { name: string }).name}
                       </span>
                     )}
@@ -278,22 +278,22 @@ export default function CampaignsPage() {
         </div>
 
         {/* Campaign Details */}
-        <div className="lg:col-span-7 space-y-4 lg:space-y-6">
+        <div className="lg:col-span-7 xl:col-span-7 2xl:col-span-7 space-y-3 sm:space-y-4 md:space-y-5 lg:space-y-6">
           {/* Stats Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-            <div className="bg-white/5 rounded-xl p-4">
-              <p className="text-gray-400 text-sm mb-1">Selected Campaign</p>
-              <p className="text-2xl font-bold text-white">{selectedCampaign?.name || '-'}</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 md:gap-4">
+            <div className="bg-white/5 rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-5">
+              <p className="text-gray-400 text-xs sm:text-sm mb-0.5 sm:mb-1">Selected Campaign</p>
+              <p className="text-lg sm:text-xl md:text-2xl font-bold text-white truncate">{selectedCampaign?.name || '-'}</p>
             </div>
-            <div className="bg-white/5 rounded-xl p-4">
-              <p className="text-gray-400 text-sm mb-1">Total Sending Time</p>
-              <p className="text-2xl font-bold text-white">{stats.sendingDuration}</p>
-              <p className="text-xs text-gray-500">Sending duration</p>
+            <div className="bg-white/5 rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-5">
+              <p className="text-gray-400 text-xs sm:text-sm mb-0.5 sm:mb-1">Total Sending Time</p>
+              <p className="text-lg sm:text-xl md:text-2xl font-bold text-white">{stats.sendingDuration}</p>
+              <p className="text-[10px] sm:text-xs text-gray-500">Sending duration</p>
             </div>
-            <div className="bg-white/5 rounded-xl p-4">
-              <p className="text-gray-400 text-sm mb-1">Average Response Time</p>
-              <p className="text-2xl font-bold text-white">{stats.avgResponseTime}</p>
-              <p className="text-xs text-gray-500">Avg. reply time</p>
+            <div className="bg-white/5 rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-5">
+              <p className="text-gray-400 text-xs sm:text-sm mb-0.5 sm:mb-1">Average Response Time</p>
+              <p className="text-lg sm:text-xl md:text-2xl font-bold text-white">{stats.avgResponseTime}</p>
+              <p className="text-[10px] sm:text-xs text-gray-500">Avg. reply time</p>
             </div>
           </div>
 

@@ -55,6 +55,9 @@ export async function POST(request: NextRequest) {
       delay_max,
       pause_after_messages,
       pause_seconds,
+      respect_active_hours,
+      active_hours_start,
+      active_hours_end,
       recipients, // Array of { phone, name, variables }
       exclusion_list, // Array of phone numbers to exclude
       new_list_name, // Name for new contact list to create
@@ -180,6 +183,9 @@ export async function POST(request: NextRequest) {
         delay_max,
         pause_after_messages: pause_after_messages || null,
         pause_seconds: pause_seconds || null,
+        respect_active_hours: respect_active_hours !== undefined ? respect_active_hours : true,
+        active_hours_start: active_hours_start || null,
+        active_hours_end: active_hours_end || null,
         new_list_name: new_list_name || null,
         existing_list_id: existing_list_id || null,
         multi_device: multi_device || false,
