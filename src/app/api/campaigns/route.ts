@@ -72,8 +72,11 @@ export async function POST(request: NextRequest) {
     delay_min = Number(delay_min) || 10
     delay_max = Number(delay_max) || 60
 
-    // Ensure delay_min is at least 10 seconds and delay_max is at least delay_min
+    // Ensure delay_min is at least 10 seconds
     delay_min = Math.max(10, delay_min)
+
+    // Ensure delay_max is at least 60 and at least delay_min
+    delay_max = Math.max(60, delay_max)
     delay_max = Math.max(delay_min, delay_max)
 
     // Validation - allow empty message if poll is present
