@@ -330,8 +330,44 @@ export default function CampaignSummaryPage() {
 
     const supabase = createClient()
 
-    // Calculate delay for the new message - it should be FIRST, so use minimal delay
+    // Calculate delay for the new message based on existing messages
+    const MESSAGES_PER_BULK = 30
+    const BULK_PAUSE_SECONDS = [
+      30 * 60,    // After 1st bulk (30 messages): 30 minutes
+      60 * 60,    // After 2nd bulk (60 messages): 1 hour
+      90 * 60,    // After 3rd bulk (90 messages): 1.5 hours - and this repeats
+    ]
+
+    // Get the current maximum delay from existing messages
+    const maxDelay = messages.length > 0
+      ? Math.max(...messages.map(m => m.scheduled_delay_seconds || 0))
+      : 0
+
+    // Current message count (before adding new one)
+    const currentCount = messages.length
+
+    // Random delay for this specific message
     const randomDelay = Math.floor(Math.random() * (campaign.delay_max - campaign.delay_min + 1)) + campaign.delay_min
+
+    // Start with cumulative delay
+    let newDelay = maxDelay + randomDelay
+
+    // Check if we just crossed a bulk boundary
+    // currentCount is the number BEFORE adding, so currentCount+1 is the new message number
+    const newMessageNumber = currentCount + 1
+
+    // Check if we need to add a bulk pause
+    // We add pause if the PREVIOUS message (currentCount) completed a bulk
+    // AND there are more messages after it (i.e., this new message exists)
+    if (currentCount > 0 && currentCount % MESSAGES_PER_BULK === 0) {
+      const bulkIndex = Math.floor(currentCount / MESSAGES_PER_BULK) - 1
+      const pauseIndex = Math.min(bulkIndex, BULK_PAUSE_SECONDS.length - 1)
+      const pauseAmount = BULK_PAUSE_SECONDS[pauseIndex]
+      console.log(`⏸️  Adding bulk pause after message ${currentCount}: ${pauseAmount}s (${pauseAmount/60} minutes)`)
+      newDelay += pauseAmount
+    }
+
+    console.log(`➕ Adding message #${newMessageNumber}: baseDelay=${maxDelay}s, random=${randomDelay}s, total=${newDelay}s`)
 
     // Create new empty message
     const newMessage = {
@@ -341,7 +377,7 @@ export default function CampaignSummaryPage() {
       message_content: campaign.message_template,
       variables: {},
       status: 'pending',
-      scheduled_delay_seconds: randomDelay // First message gets the base delay
+      scheduled_delay_seconds: newDelay
     }
 
     const { data, error } = await supabase
@@ -360,10 +396,13 @@ export default function CampaignSummaryPage() {
       return
     }
 
-    // Update total recipients count
+    // Update total recipients count and estimated duration
     await supabase
       .from('campaigns')
-      .update({ total_recipients: messages.length + 1 })
+      .update({
+        total_recipients: messages.length + 1,
+        estimated_duration: newDelay
+      })
       .eq('id', campaignId)
 
     // Add to START of local state and start editing immediately
