@@ -114,12 +114,15 @@ export async function POST(
     }
 
     // Update campaign status to running
+    // Only set started_at if this is the first time (was draft/scheduled)
+    const updateData: Record<string, string> = { status: 'running' }
+    if (!campaign.started_at) {
+      updateData.started_at = new Date().toISOString()
+    }
+
     await supabase
       .from('campaigns')
-      .update({
-        status: 'running',
-        started_at: campaign.started_at || new Date().toISOString()
-      })
+      .update(updateData)
       .eq('id', campaignId)
 
     console.log(`[PROCESS] Starting campaign ${campaignId} with ${pendingCount} pending messages`)
