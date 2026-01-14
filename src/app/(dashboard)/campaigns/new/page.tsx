@@ -1032,7 +1032,7 @@ function NewCampaignContent() {
         return
       }
       // Check if at least one variation has content
-      const hasValidVariation = messageVariations.some(v => v.trim())
+      const hasValidVariation = messageVariations.some(v => v && v.trim())
       if (!hasValidVariation) {
         setAlertPopup({ show: true, message: 'יש להזין תוכן לפחות לוריאציה אחת' })
         return
