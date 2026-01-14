@@ -218,9 +218,11 @@ export async function POST(request: NextRequest) {
       const messageDelay = Math.floor(Math.random() * (delay_max - delay_min + 1)) + delay_min
       cumulativeDelaySeconds += messageDelay
 
-      // Add bulk pause if this message completes a bulk (every 30 messages)
+      // Add bulk pause ONLY if there are more messages after this bulk
+      // Don't add pause after the last message of a campaign
       const messageNumber = index + 1
-      if (messageNumber > 0 && messageNumber % MESSAGES_PER_BULK === 0) {
+      const isLastMessage = messageNumber === filteredRecipients.length
+      if (!isLastMessage && messageNumber % MESSAGES_PER_BULK === 0) {
         const bulkIndex = Math.floor(messageNumber / MESSAGES_PER_BULK) - 1
         const pauseIndex = Math.min(bulkIndex, BULK_PAUSE_SECONDS.length - 1)
         cumulativeDelaySeconds += BULK_PAUSE_SECONDS[pauseIndex]
