@@ -73,6 +73,9 @@ function AnalyticsContent() {
   const [selectedConnection, setSelectedConnection] = useState<Connection | null>(null)
   const [showConnectionDropdown, setShowConnectionDropdown] = useState(false)
   const [countdown, setCountdown] = useState<string | null>(null)
+  const [dailyMessageCount, setDailyMessageCount] = useState<number>(0)
+  const [dailyLimit, setDailyLimit] = useState<number>(0)
+  const [resumeAt, setResumeAt] = useState<string | null>(null)
 
   // Modal states
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -221,10 +224,18 @@ function AnalyticsContent() {
     const isRunningOrPaused = selectedCampaign?.status === 'running' || selectedCampaign?.status === 'paused'
     if (!selectedCampaign || !isRunningOrPaused || !selectedCampaign.started_at || !selectedCampaign.estimated_duration) {
       setCountdown(null)
+      setResumeAt(null)
       return
     }
 
     const calculateCountdown = () => {
+      // Check if all messages are sent or failed (no pending)
+      const pendingCount = recipients.filter(r => r.status === 'pending').length
+      if (pendingCount === 0 && recipients.length > 0) {
+        setCountdown(null) // Don't show countdown if everything is done
+        return
+      }
+
       const startTime = new Date(selectedCampaign.started_at!).getTime()
       const estimatedEndTime = startTime + (selectedCampaign.estimated_duration! * 1000)
 
@@ -233,8 +244,15 @@ function AnalyticsContent() {
       let referenceTime: number
       if (selectedCampaign.status === 'paused' && selectedCampaign.paused_at) {
         referenceTime = new Date(selectedCampaign.paused_at).getTime()
+
+        // Calculate when campaign will resume (midnight)
+        const midnight = new Date(selectedCampaign.paused_at)
+        midnight.setDate(midnight.getDate() + 1)
+        midnight.setHours(0, 0, 0, 0)
+        setResumeAt(midnight.toISOString())
       } else {
         referenceTime = Date.now()
+        setResumeAt(null)
       }
 
       const remainingMs = estimatedEndTime - referenceTime
@@ -262,7 +280,7 @@ function AnalyticsContent() {
       const interval = setInterval(calculateCountdown, 1000)
       return () => clearInterval(interval)
     }
-  }, [selectedCampaign?.id, selectedCampaign?.status, selectedCampaign?.started_at, selectedCampaign?.estimated_duration, selectedCampaign?.paused_at])
+  }, [selectedCampaign?.id, selectedCampaign?.status, selectedCampaign?.started_at, selectedCampaign?.estimated_duration, selectedCampaign?.paused_at, recipients])
 
   const loadData = async () => {
     setLoading(true)
@@ -321,7 +339,34 @@ function AnalyticsContent() {
         return new Date(bTime).getTime() - new Date(aTime).getTime()
       })
       setRecipients(sorted)
+
+      // Calculate messages sent today
+      const todayStart = new Date()
+      todayStart.setHours(0, 0, 0, 0)
+      const sentToday = sorted.filter(r =>
+        r.status === 'sent' && r.sent_at && new Date(r.sent_at) >= todayStart
+      ).length
+      setDailyMessageCount(sentToday)
     }
+
+    // Calculate daily limit for this campaign
+    const { data: campaign } = await supabase
+      .from('campaigns')
+      .select('multi_device, device_ids, message_variations')
+      .eq('id', campaignId)
+      .single()
+
+    if (campaign) {
+      const BASE_MESSAGES_PER_DAY_PER_DEVICE = 90
+      const VARIATION_BONUS = 10
+      const messageVariations: string[] = campaign.message_variations || []
+      const variationCount = messageVariations.length > 1 ? messageVariations.length : 0
+      const extraVariationBonus = variationCount > 1 ? (variationCount - 1) * VARIATION_BONUS : 0
+      const deviceCount = campaign.multi_device && campaign.device_ids ? campaign.device_ids.length : 1
+      const limit = (BASE_MESSAGES_PER_DAY_PER_DEVICE + extraVariationBonus) * deviceCount
+      setDailyLimit(limit)
+    }
+
     setRecipientsLoading(false)
   }
 
@@ -996,7 +1041,7 @@ function AnalyticsContent() {
                 <h3 className={`text-[14px] font-semibold mb-1 text-right ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
                   {(selectedCampaign?.status === 'running' || selectedCampaign?.status === 'paused') && countdown
                     ? (selectedCampaign?.status === 'paused' ? 'זמן שנותר (מושהה)' : 'זמן שנותר')
-                    : 'זמן שליחת הקמפיין'}
+                    : (selectedCampaign?.status === 'running' || selectedCampaign?.status === 'paused') ? 'הושלם' : 'זמן שליחת הקמפיין'}
                 </h3>
                 {(selectedCampaign?.status === 'running' || selectedCampaign?.status === 'paused') && countdown ? (
                   <>
@@ -1007,6 +1052,30 @@ function AnalyticsContent() {
                     <p className={`text-[11px] text-right ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
                       סה״כ: {formatDurationShort(selectedCampaign.estimated_duration)}
                     </p>
+                    {/* Show daily limit info if campaign is running/paused */}
+                    {dailyLimit > 0 && (
+                      <p className={`text-[11px] text-right mt-1 ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
+                        היום: {dailyMessageCount}/{dailyLimit} הודעות
+                      </p>
+                    )}
+                    {/* Show resume time if paused due to daily limit */}
+                    {selectedCampaign?.status === 'paused' && resumeAt && dailyMessageCount >= dailyLimit && (
+                      <p className={`text-[10px] text-right mt-1 ${darkMode ? 'text-orange-400' : 'text-orange-600'}`}>
+                        ימשיך ב-{new Date(resumeAt).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    )}
+                  </>
+                ) : (selectedCampaign?.status === 'running' || selectedCampaign?.status === 'paused') ? (
+                  <>
+                    <p className={`text-[20px] font-bold text-right text-[#187C55]`}>✓</p>
+                    <p className={`text-[11px] text-right ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
+                      כל ההודעות נשלחו/נכשלו
+                    </p>
+                    {dailyLimit > 0 && (
+                      <p className={`text-[11px] text-right mt-1 ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
+                        היום: {dailyMessageCount}/{dailyLimit} הודעות
+                      </p>
+                    )}
                   </>
                 ) : (
                   <>

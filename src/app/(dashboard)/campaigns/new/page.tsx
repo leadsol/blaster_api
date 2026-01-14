@@ -1550,7 +1550,7 @@ function NewCampaignContent() {
       setRecipients(prev => [...prev, {
         id: Date.now().toString(),
         name: manualName,
-        phone: formatPhoneNumber(manualPhone)
+        phone: normalizePhone(manualPhone)
       }])
       setManualName('')
       setManualPhone('')
@@ -1679,7 +1679,7 @@ function NewCampaignContent() {
     const newExclusions = dataRows
       .map((row, idx) => ({
         id: `excl-${Date.now()}-${idx}`,
-        phone: formatPhoneNumber(String(row[phoneIndex] || ''))
+        phone: normalizePhone(String(row[phoneIndex] || ''))
       }))
       .filter(item => item.phone)
 
@@ -1700,7 +1700,7 @@ function NewCampaignContent() {
   // Add manual exclusion
   const handleAddManualExclusion = () => {
     if (exclusionManualPhone) {
-      const formattedPhone = formatPhoneNumber(exclusionManualPhone)
+      const formattedPhone = normalizePhone(exclusionManualPhone)
       // Check if already exists
       if (!exclusionList.some(e => e.phone === formattedPhone)) {
         setExclusionList(prev => [...prev, {
@@ -1832,7 +1832,7 @@ function NewCampaignContent() {
             const recipient: Recipient = {
               id: `excel-${Date.now()}-${idx}`,
               name: '',
-              phone: formatPhoneNumber(String(row[phoneIndex] || '')),
+              phone: normalizePhone(String(row[phoneIndex] || '')),
               variables,
             }
             // Also add to recipient directly for table display
@@ -1876,7 +1876,7 @@ function NewCampaignContent() {
       const recipient: Recipient = {
         id: `excel-${Date.now()}-${idx}`,
         name: nameIndex !== -1 ? String(row[nameIndex] || '') : '',
-        phone: formatPhoneNumber(String(row[phoneIndex] || '')),
+        phone: normalizePhone(String(row[phoneIndex] || '')),
         variables,
       }
       // Also add to recipient directly for table display
@@ -1974,7 +1974,7 @@ function NewCampaignContent() {
             const recipient: Recipient = {
               id: `parsed-${Date.now()}-${idx}`,
               name: '',
-              phone: formatPhoneNumber(row[phoneIndex] || ''),
+              phone: normalizePhone(row[phoneIndex] || ''),
               variables,
             }
             // Also add to recipient directly for table display
@@ -2017,7 +2017,7 @@ function NewCampaignContent() {
       const recipient: Recipient = {
         id: `parsed-${Date.now()}-${idx}`,
         name: nameIndex !== -1 ? (row[nameIndex] || '') : '',
-        phone: formatPhoneNumber(row[phoneIndex] || ''),
+        phone: normalizePhone(row[phoneIndex] || ''),
         variables,
       }
       // Also add to recipient directly for table display
@@ -2069,7 +2069,7 @@ function NewCampaignContent() {
         return acc
       }, {} as Record<string, string>)
 
-      const formattedPhone = formatPhoneNumber(manualPhone)
+      const formattedPhone = normalizePhone(manualPhone)
       console.log('Adding manual recipient:', { original: manualPhone, formatted: formattedPhone })
 
       // Update all columns with שם, טלפון and custom field names
