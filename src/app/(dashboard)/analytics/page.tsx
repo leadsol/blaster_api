@@ -668,6 +668,9 @@ function AnalyticsContent() {
 
   // Filter recipients by search
   const filteredRecipients = recipients.filter(r => {
+    // Filter out recipients without phone numbers
+    if (!r.phone || r.phone.trim() === '') return false
+
     if (!recipientSearch.trim()) return true
     const search = recipientSearch.toLowerCase()
     return (
@@ -707,8 +710,11 @@ function AnalyticsContent() {
       return { sent: 0, delivered: 0, read: 0, replied: 0, failed: 0, pending: 0, total: 0 }
     }
 
-    // Count actual statuses from recipients
-    const counts = recipients.reduce((acc, r) => {
+    // Filter out recipients without phone numbers (invalid entries)
+    const validRecipients = recipients.filter(r => r.phone && r.phone.trim() !== '')
+
+    // Count actual statuses from valid recipients only
+    const counts = validRecipients.reduce((acc, r) => {
       acc[r.status] = (acc[r.status] || 0) + 1
       return acc
     }, {} as Record<string, number>)
@@ -720,7 +726,7 @@ function AnalyticsContent() {
       replied: counts['replied'] || 0,
       failed: counts['failed'] || 0,
       pending: counts['pending'] || 0,
-      total: recipients.length
+      total: validRecipients.length
     }
   }, [selectedCampaign, recipients])
 
