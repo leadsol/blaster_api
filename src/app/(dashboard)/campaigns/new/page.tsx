@@ -6087,26 +6087,46 @@ function NewCampaignContent() {
               </div>
             </div>
             <h3 className={`text-[17px] font-semibold text-center mb-2 ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
-              יש לך שינויים שלא נשמרו
+              האם אתה בטוח שברצונך לעזוב?
             </h3>
             <p className={`text-[14px] text-center mb-[20px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
-              אם תעזוב את הדף, הנתונים שהזנת יימחקו. האם אתה בטוח שברצונך לעזוב?
+              אם תעזוב את הדף, תאבד את כל הנתונים שהזנת.
+              <br />
+              <strong>אם תרצה, תוכל לשמור את הקמפיין כטיוטה</strong> - לחץ על כפתור "שמור כטיוטה"
             </p>
-            <div className="flex gap-[10px]">
+            <div className="flex flex-col gap-[10px]">
               <button
-                onClick={cancelLeavePage}
-                className={`flex-1 h-[40px] rounded-[10px] text-[14px] font-medium ${
-                  darkMode ? 'bg-[#0a1628] text-gray-400 hover:text-white' : 'bg-[#f2f3f8] text-[#595C7A] hover:text-[#030733]'
-                } transition-colors`}
+                onClick={async () => {
+                  // Save as draft
+                  await handleSaveDraft()
+                  // Then navigate
+                  setFormModified(false)
+                  if (leavePagePopup.pendingUrl) {
+                    router.push(leavePagePopup.pendingUrl)
+                  }
+                  setLeavePagePopup({ show: false })
+                }}
+                className="w-full h-[40px] bg-[#0043e0] text-white rounded-[10px] text-[14px] font-medium hover:bg-[#0036b3] transition-colors"
+                disabled={savingDraft}
               >
-                להישאר בדף
+                {savingDraft ? 'שומר...' : 'שמור כטיוטה ועזוב'}
               </button>
-              <button
-                onClick={confirmLeavePage}
-                className="flex-1 h-[40px] bg-red-600 text-white rounded-[10px] text-[14px] font-medium hover:bg-red-700 transition-colors"
-              >
-                עזוב ומחק
-              </button>
+              <div className="flex gap-[10px]">
+                <button
+                  onClick={cancelLeavePage}
+                  className={`flex-1 h-[40px] rounded-[10px] text-[14px] font-medium ${
+                    darkMode ? 'bg-[#0a1628] text-gray-400 hover:text-white' : 'bg-[#f2f3f8] text-[#595C7A] hover:text-[#030733]'
+                  } transition-colors`}
+                >
+                  להישאר בדף
+                </button>
+                <button
+                  onClick={confirmLeavePage}
+                  className="flex-1 h-[40px] bg-red-600 text-white rounded-[10px] text-[14px] font-medium hover:bg-red-700 transition-colors"
+                >
+                  עזוב ומחק הכל
+                </button>
+              </div>
             </div>
           </div>
         </div>

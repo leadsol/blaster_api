@@ -78,6 +78,9 @@ export default function CampaignSummaryPage() {
   // Modal states
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showLaunchConfirm, setShowLaunchConfirm] = useState(false)
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false)
+  const [pendingNavigation, setPendingNavigation] = useState<string | null>(null)
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [alertModal, setAlertModal] = useState<{
     isOpen: boolean
     title: string
@@ -88,6 +91,28 @@ export default function CampaignSummaryPage() {
   useEffect(() => {
     loadCampaignData()
   }, [campaignId])
+
+  // Track unsaved changes
+  useEffect(() => {
+    if (campaign?.status !== 'draft') return
+
+    const hasChanges = editingId !== null || selectedIds.size > 0
+
+    setHasUnsavedChanges(hasChanges)
+  }, [editingId, selectedIds, campaign?.status])
+
+  // Warn before leaving page with unsaved changes
+  useEffect(() => {
+    if (!hasUnsavedChanges || campaign?.status !== 'draft') return
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      e.returnValue = ''
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [hasUnsavedChanges, campaign?.status])
 
   // Realtime subscription for campaign and messages
   useEffect(() => {
@@ -706,7 +731,14 @@ export default function CampaignSummaryPage() {
       {/* Header */}
       <div className="flex items-center gap-4 mb-6">
         <button
-          onClick={() => router.push('/campaigns')}
+          onClick={() => {
+            if (hasUnsavedChanges && campaign?.status === 'draft') {
+              setPendingNavigation('/campaigns')
+              setShowLeaveConfirm(true)
+            } else {
+              router.push('/campaigns')
+            }
+          }}
           className={`p-2 rounded-lg transition-colors ${
             darkMode ? 'hover:bg-white/10 text-white' : 'hover:bg-gray-100 text-[#030733]'
           }`}
@@ -1206,6 +1238,56 @@ export default function CampaignSummaryPage() {
         message={alertModal.message}
         type={alertModal.type}
       />
+
+      {/* Leave Page Confirmation */}
+      {showLeaveConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4">
+          <div className={`w-full max-w-[400px] rounded-[15px] p-4 sm:p-[20px] ${darkMode ? 'bg-[#142241]' : 'bg-white'}`}>
+            <div className="flex items-center justify-center mb-[15px]">
+              <div className={`w-[50px] h-[50px] rounded-full flex items-center justify-center ${
+                darkMode ? 'bg-orange-900/30' : 'bg-orange-100'
+              }`}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={darkMode ? '#fb923c' : '#ea580c'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                  <line x1="12" y1="9" x2="12" y2="13"/>
+                  <line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+              </div>
+            </div>
+            <h3 className={`text-[17px] font-semibold text-center mb-2 ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+              האם אתה בטוח שברצונך לעזוב?
+            </h3>
+            <p className={`text-[14px] text-center mb-[20px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
+              יש לך שינויים שלא נשמרו. אם תעזוב את הדף, תאבד את השינויים האלו.
+            </p>
+            <div className="flex gap-[10px]">
+              <button
+                onClick={() => {
+                  setShowLeaveConfirm(false)
+                  setPendingNavigation(null)
+                }}
+                className={`flex-1 h-[40px] rounded-[10px] text-[14px] font-medium ${
+                  darkMode ? 'bg-[#0a1628] text-gray-400 hover:text-white' : 'bg-[#f2f3f8] text-[#595C7A] hover:text-[#030733]'
+                } transition-colors`}
+              >
+                להישאר בדף
+              </button>
+              <button
+                onClick={() => {
+                  setShowLeaveConfirm(false)
+                  setHasUnsavedChanges(false)
+                  if (pendingNavigation) {
+                    router.push(pendingNavigation)
+                  }
+                }}
+                className="flex-1 h-[40px] bg-red-600 text-white rounded-[10px] text-[14px] font-medium hover:bg-red-700 transition-colors"
+              >
+                עזוב ומחק שינויים
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
