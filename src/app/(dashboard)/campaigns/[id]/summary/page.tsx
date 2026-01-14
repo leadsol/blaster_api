@@ -35,6 +35,7 @@ interface Campaign {
   existing_list_id: string | null
   multi_device: boolean
   device_ids: string[] | null
+  estimated_duration?: number
   // Poll data
   poll_question: string | null
   poll_options: string[] | null
