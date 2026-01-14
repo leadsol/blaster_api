@@ -224,12 +224,12 @@ export default function CampaignSummaryPage() {
       }
     }
 
-    // Load campaign messages
+    // Load campaign messages - order by scheduled delay for correct sequence
     const { data: messagesData, error: messagesError } = await supabase
       .from('campaign_messages')
       .select('*')
       .eq('campaign_id', campaignId)
-      .order('created_at', { ascending: true })
+      .order('scheduled_delay_seconds', { ascending: true })
 
     if (messagesError) {
       console.error('Error loading messages:', messagesError)
@@ -518,7 +518,11 @@ export default function CampaignSummaryPage() {
 
     setMessages(updatedMessages)
     if (campaign) {
-      setCampaign({ ...campaign, estimated_duration: cumulativeDelaySeconds })
+      setCampaign({
+        ...campaign,
+        estimated_duration: cumulativeDelaySeconds,
+        total_recipients: currentMessages.length
+      })
     }
   }
 
