@@ -4054,7 +4054,8 @@ function NewCampaignContent() {
                                 )}
                               </div>
                             </label>
-                          ))}
+                            )
+                          })}
                         </div>
                         {selectedDevices.length > 0 && (
                           <div className={`text-[12px] mt-[4px] ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
