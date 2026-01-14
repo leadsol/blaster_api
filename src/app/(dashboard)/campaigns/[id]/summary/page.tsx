@@ -485,12 +485,20 @@ export default function CampaignSummaryPage() {
 
     console.log(`✅ [Recalc] Total estimated duration: ${cumulativeDelaySeconds}s (${(cumulativeDelaySeconds/60).toFixed(2)} minutes)`)
 
-    // Update all messages in database
-    for (const update of updates) {
-      await supabase
-        .from('campaign_messages')
-        .update({ scheduled_delay_seconds: update.scheduled_delay_seconds })
-        .eq('id', update.id)
+    // Update all messages in database with single batch upsert
+    const { error: updateError } = await supabase
+      .from('campaign_messages')
+      .upsert(
+        updates.map(u => ({
+          id: u.id,
+          scheduled_delay_seconds: u.scheduled_delay_seconds
+        })),
+        { onConflict: 'id' }
+      )
+
+    if (updateError) {
+      console.error('Error updating message delays:', updateError)
+      return
     }
 
     // Update campaign estimated duration
