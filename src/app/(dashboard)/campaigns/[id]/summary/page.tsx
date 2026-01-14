@@ -396,17 +396,10 @@ export default function CampaignSummaryPage() {
       return
     }
 
-    // Update total recipients count and estimated duration
-    await supabase
-      .from('campaigns')
-      .update({
-        total_recipients: messages.length + 1,
-        estimated_duration: newDelay
-      })
-      .eq('id', campaignId)
+    // Add new message to list
+    const newMessages = [data, ...messages]
 
-    // Add to START of local state and start editing immediately
-    setMessages([data, ...messages])
+    // Start editing immediately
     setEditingId(data.id)
     setEditData({
       name: '',
@@ -414,6 +407,85 @@ export default function CampaignSummaryPage() {
       message_content: data.message_content,
       variables: {}
     })
+
+    // Recalculate all delays with the new message included
+    await recalculateDelays(newMessages)
+  }
+
+  // Recalculate all message delays based on current message list
+  const recalculateDelays = async (currentMessages: CampaignMessage[]) => {
+    if (!campaign) return
+
+    const supabase = createClient()
+    const MESSAGES_PER_BULK = 30
+    const BULK_PAUSE_SECONDS = [
+      30 * 60,    // After 1st bulk (30 messages): 30 minutes
+      60 * 60,    // After 2nd bulk (60 messages): 1 hour
+      90 * 60,    // After 3rd bulk (90 messages): 1.5 hours - and this repeats
+    ]
+
+    let cumulativeDelaySeconds = 0
+    const updates = []
+
+    console.log(`🔄 Recalculating delays for ${currentMessages.length} messages`)
+
+    for (let index = 0; index < currentMessages.length; index++) {
+      const message = currentMessages[index]
+
+      // Use existing delay or generate new random one
+      const existingDelay = message.scheduled_delay_seconds || 0
+      const previousCumulative = index > 0 ? updates[index - 1].scheduled_delay_seconds : 0
+      const messageDelay = existingDelay - previousCumulative || Math.floor(Math.random() * (campaign.delay_max - campaign.delay_min + 1)) + campaign.delay_min
+
+      cumulativeDelaySeconds += messageDelay
+
+      const messageNumber = index + 1
+      const isLastMessage = messageNumber === currentMessages.length
+
+      // Add bulk pause if needed
+      if (!isLastMessage && messageNumber % MESSAGES_PER_BULK === 0) {
+        const bulkIndex = Math.floor(messageNumber / MESSAGES_PER_BULK) - 1
+        const pauseIndex = Math.min(bulkIndex, BULK_PAUSE_SECONDS.length - 1)
+        const pauseAmount = BULK_PAUSE_SECONDS[pauseIndex]
+        console.log(`⏸️  [Recalc] Adding bulk pause after message ${messageNumber}: ${pauseAmount}s`)
+        cumulativeDelaySeconds += pauseAmount
+      }
+
+      updates.push({
+        id: message.id,
+        scheduled_delay_seconds: cumulativeDelaySeconds
+      })
+    }
+
+    console.log(`✅ [Recalc] Total estimated duration: ${cumulativeDelaySeconds}s (${(cumulativeDelaySeconds/60).toFixed(2)} minutes)`)
+
+    // Update all messages in database
+    for (const update of updates) {
+      await supabase
+        .from('campaign_messages')
+        .update({ scheduled_delay_seconds: update.scheduled_delay_seconds })
+        .eq('id', update.id)
+    }
+
+    // Update campaign estimated duration
+    await supabase
+      .from('campaigns')
+      .update({
+        estimated_duration: cumulativeDelaySeconds,
+        total_recipients: currentMessages.length
+      })
+      .eq('id', campaignId)
+
+    // Update local state
+    const updatedMessages = currentMessages.map((msg, idx) => ({
+      ...msg,
+      scheduled_delay_seconds: updates[idx].scheduled_delay_seconds
+    }))
+
+    setMessages(updatedMessages)
+    if (campaign) {
+      setCampaign({ ...campaign, estimated_duration: cumulativeDelaySeconds })
+    }
   }
 
   const deleteSelected = () => {
@@ -439,8 +511,11 @@ export default function CampaignSummaryPage() {
       return
     }
 
-    setMessages(messages.filter(m => !selectedIds.has(m.id)))
+    const remainingMessages = messages.filter(m => !selectedIds.has(m.id))
     setSelectedIds(new Set())
+
+    // Recalculate delays after deletion
+    await recalculateDelays(remainingMessages)
   }
 
   const launchCampaign = () => {
