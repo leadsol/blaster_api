@@ -317,6 +317,81 @@ export default function CampaignSummaryPage() {
     setEditData(null)
   }
 
+  const addNewRecipient = async () => {
+    if (!campaign || campaign.status !== 'draft') {
+      setAlertModal({
+        isOpen: true,
+        title: 'לא ניתן להוסיף נמענים',
+        message: 'ניתן להוסיף נמענים רק לקמפיינים בסטטוס טיוטה',
+        type: 'warning'
+      })
+      return
+    }
+
+    const supabase = createClient()
+
+    // Calculate delay for the new message
+    const lastMessage = messages.length > 0
+      ? messages.reduce((max, msg) =>
+          (msg.scheduled_delay_seconds || 0) > (max.scheduled_delay_seconds || 0) ? msg : max
+        )
+      : null
+
+    const baseDelay = lastMessage?.scheduled_delay_seconds || 0
+    const randomDelay = Math.floor(Math.random() * (campaign.delay_max - campaign.delay_min + 1)) + campaign.delay_min
+    const newDelay = baseDelay + randomDelay
+
+    // Create new empty message
+    const newMessage = {
+      campaign_id: campaignId,
+      phone: '',
+      name: null,
+      message_content: campaign.message_template,
+      variables: {},
+      status: 'pending',
+      scheduled_delay_seconds: newDelay
+    }
+
+    const { data, error } = await supabase
+      .from('campaign_messages')
+      .insert(newMessage)
+      .select()
+      .single()
+
+    if (error) {
+      console.error('Error adding recipient:', error)
+      setAlertModal({
+        isOpen: true,
+        title: 'שגיאה בהוספת נמען',
+        type: 'error'
+      })
+      return
+    }
+
+    // Update total recipients count
+    await supabase
+      .from('campaigns')
+      .update({ total_recipients: messages.length + 1 })
+      .eq('id', campaignId)
+
+    // Add to local state and start editing immediately
+    setMessages([...messages, data])
+    setEditingId(data.id)
+    setEditData({
+      name: '',
+      phone: '',
+      message_content: data.message_content,
+      variables: {}
+    })
+
+    setAlertModal({
+      isOpen: true,
+      title: 'נמען חדש נוסף',
+      message: 'מלא את הפרטים ולחץ על ✓ לשמירה',
+      type: 'success'
+    })
+  }
+
   const deleteSelected = () => {
     if (selectedIds.size === 0) return
     setShowDeleteConfirm(true)
@@ -532,7 +607,7 @@ export default function CampaignSummaryPage() {
       {/* Header */}
       <div className="flex items-center gap-4 mb-6">
         <button
-          onClick={() => router.push('/campaigns/new')}
+          onClick={() => router.push('/campaigns')}
           className={`p-2 rounded-lg transition-colors ${
             darkMode ? 'hover:bg-white/10 text-white' : 'hover:bg-gray-100 text-[#030733]'
           }`}
@@ -577,11 +652,17 @@ export default function CampaignSummaryPage() {
                 <span className="text-sm">מחק</span>
               </button>
               <button
-                onClick={() => router.push('/campaigns/new')}
-                className="flex items-center gap-2 px-4 py-2 bg-[#0043e0] text-white rounded-lg hover:bg-[#0036b3] transition-colors"
+                onClick={addNewRecipient}
+                disabled={campaign?.status !== 'draft'}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                  campaign?.status !== 'draft'
+                    ? 'bg-gray-400 cursor-not-allowed'
+                    : 'bg-[#0043e0] hover:bg-[#0036b3] text-white'
+                }`}
+                title={campaign?.status !== 'draft' ? 'ניתן להוסיף נמענים רק בטיוטה' : 'הוסף נמען חדש'}
               >
                 <Plus className="w-4 h-4" />
-                <span className="text-sm">הוסף</span>
+                <span className="text-sm">הוסף נמען</span>
               </button>
             </div>
           </div>
