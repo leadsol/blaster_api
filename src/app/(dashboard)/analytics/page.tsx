@@ -76,6 +76,7 @@ function AnalyticsContent() {
   const [checkedCampaigns, setCheckedCampaigns] = useState<Set<string>>(new Set())
   const [connections, setConnections] = useState<Connection[]>([])
   const [selectedConnection, setSelectedConnection] = useState<Connection | null>(null)
+  const [selectedDevices, setSelectedDevices] = useState<Set<string>>(new Set()) // Multiple device selection
   const [showConnectionDropdown, setShowConnectionDropdown] = useState(false)
   const [countdown, setCountdown] = useState<string | null>(null)
   const [dailyMessageCount, setDailyMessageCount] = useState<number>(0)
@@ -88,6 +89,7 @@ function AnalyticsContent() {
     phone: string | null
     sentToday: number
     limit: number
+    bonus: number
     status: string
   }>>([]) // Daily stats for all devices
 
@@ -247,6 +249,10 @@ function AnalyticsContent() {
   useEffect(() => {
     if (connections.length > 0) {
       loadAllDevicesStats()
+      // Auto-select all devices on initial load
+      if (selectedDevices.size === 0) {
+        setSelectedDevices(new Set(connections.map(c => c.id)))
+      }
     }
   }, [connections, campaigns])
 
@@ -534,6 +540,7 @@ function AnalyticsContent() {
           phone: conn.phone_number,
           sentToday,
           limit: deviceLimit,
+          bonus: maxVariationBonus,
           status: conn.status
         }
       })
@@ -1111,100 +1118,119 @@ function AnalyticsContent() {
             {/* Device Analytics */}
             {allDevicesStats.length > 0 && (
               <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[10px] px-5 py-4`}>
-                <h3 className={`text-[14px] font-semibold mb-3 ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+                <h3 className={`text-[13px] font-semibold mb-3 ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
                   לימיט יומי למכשירים
                 </h3>
-                <div className="space-y-2">
-                  {allDevicesStats.map((device) => {
-                    const percentage = (device.sentToday / device.limit) * 100
-                    const remaining = device.limit - device.sentToday
-                    const isAtLimit = device.sentToday >= device.limit
-                    const isNearLimit = percentage >= 80
 
-                    return (
-                      <div
-                        key={device.id}
-                        className={`p-3 rounded-lg ${darkMode ? 'bg-[#0f1b30]' : 'bg-[#f2f3f8]'}`}
-                      >
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <div className={`w-2 h-2 rounded-full ${device.status === 'connected' ? 'bg-green-500' : 'bg-red-500'}`} />
-                            <span className={`text-[13px] font-medium ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
-                              {device.name}
-                            </span>
+                {/* Devices list with checkboxes */}
+                <div className="max-h-[200px] overflow-y-auto space-y-2 mb-3">
+                  {/* Select All */}
+                  <label className={`flex items-center gap-2 p-2 rounded cursor-pointer hover:${darkMode ? 'bg-[#0f1b30]' : 'bg-gray-50'}`}>
+                    <input
+                      type="checkbox"
+                      checked={selectedDevices.size === allDevicesStats.length}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedDevices(new Set(allDevicesStats.map(d => d.id)))
+                        } else {
+                          setSelectedDevices(new Set())
+                        }
+                      }}
+                      className="w-4 h-4"
+                    />
+                    <span className={`text-[12px] font-medium ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+                      בחר הכל
+                    </span>
+                  </label>
+
+                  {/* Individual devices */}
+                  {allDevicesStats.map((device) => (
+                    <label
+                      key={device.id}
+                      className={`flex items-center gap-2 p-2 rounded cursor-pointer hover:${darkMode ? 'bg-[#0f1b30]' : 'bg-gray-50'}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedDevices.has(device.id)}
+                        onChange={(e) => {
+                          const newSet = new Set(selectedDevices)
+                          if (e.target.checked) {
+                            newSet.add(device.id)
+                          } else {
+                            newSet.delete(device.id)
+                          }
+                          setSelectedDevices(newSet)
+                        }}
+                        className="w-4 h-4"
+                      />
+                      <div className={`w-2 h-2 rounded-full ${device.status === 'connected' ? 'bg-green-500' : 'bg-red-500'}`} />
+                      <span className={`text-[11px] ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+                        {device.name}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+
+                {/* Combined stats for selected devices */}
+                {selectedDevices.size > 0 && (() => {
+                  const selectedStats = allDevicesStats.filter(d => selectedDevices.has(d.id))
+                  const totalSent = selectedStats.reduce((sum, d) => sum + d.sentToday, 0)
+                  const totalLimit = selectedStats.reduce((sum, d) => sum + d.limit, 0)
+                  const totalBonus = selectedStats.reduce((sum, d) => sum + d.bonus, 0)
+                  const remaining = totalLimit - totalSent
+
+                  return (
+                    <div className={`p-3 rounded-lg ${darkMode ? 'bg-[#0f1b30]' : 'bg-[#f2f3f8]'}`}>
+                      <div className="flex items-center justify-between text-center">
+                        <div className="flex-1">
+                          <div className={`text-[10px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
+                            נשלחו היום
                           </div>
-                          <span className={`text-[11px] ${isAtLimit ? 'text-red-500' : isNearLimit ? 'text-orange-500' : darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
-                            {device.sentToday}/{device.limit}
-                          </span>
+                          <div className={`text-[16px] font-bold ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+                            {totalSent}
+                          </div>
                         </div>
-                        <div className={`h-1.5 rounded-full overflow-hidden ${darkMode ? 'bg-[#1a2d4a]' : 'bg-gray-200'}`}>
-                          <div
-                            className={`h-full transition-all ${isAtLimit ? 'bg-red-500' : isNearLimit ? 'bg-orange-500' : 'bg-green-500'}`}
-                            style={{ width: `${Math.min(percentage, 100)}%` }}
-                          />
+                        <div className={`w-px h-8 ${darkMode ? 'bg-[#1a2d4a]' : 'bg-gray-300'}`} />
+                        <div className="flex-1">
+                          <div className={`text-[10px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
+                            נשארו להיום
+                          </div>
+                          <div className={`text-[16px] font-bold ${remaining <= 0 ? 'text-red-500' : darkMode ? 'text-white' : 'text-[#030733]'}`}>
+                            {Math.max(0, remaining)}
+                          </div>
                         </div>
-                        <div className="flex items-center justify-between mt-1">
-                          <span className={`text-[10px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                            {formatPhoneNumber(device.phone)}
-                          </span>
-                          {!isAtLimit && (
-                            <span className={`text-[10px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                              נותרו {remaining}
-                            </span>
-                          )}
-                          {isAtLimit && (
-                            <span className="text-[10px] text-red-500">
-                              הגעת ללימיט
-                            </span>
-                          )}
+                        <div className={`w-px h-8 ${darkMode ? 'bg-[#1a2d4a]' : 'bg-gray-300'}`} />
+                        <div className="flex-1">
+                          <div className={`text-[10px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
+                            בונוס וריאציות
+                          </div>
+                          <div className={`text-[16px] font-bold ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+                            {totalBonus > 0 ? `+${totalBonus}` : '0'}
+                          </div>
                         </div>
                       </div>
-                    )
-                  })}
-                </div>
+                    </div>
+                  )
+                })()}
               </div>
             )}
 
-            {/* Filter Tabs */}
-            <div className="flex gap-2 flex-wrap">
-              {statusFilters.slice().reverse().map((filter) => (
-                <button
-                  key={filter.key}
-                  onClick={() => setFilterStatus(filter.key)}
-                  className={`px-[15px] py-[7px] rounded-[8px] text-[14px] transition-colors ${
-                    filterStatus === filter.key
-                      ? 'bg-[#030733] text-white'
-                      : darkMode ? 'bg-[#142241] text-white' : 'bg-white text-[#030733]'
-                  }`}
-                >
-                  {filter.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Search Bar */}
-            <div className="flex gap-2">
-              <button className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[8px] px-4 py-3 flex items-center gap-2`}>
-                <SlidersHorizontal className={`${darkMode ? 'text-white' : 'text-[#030733]'}`} size={20} />
-                <span className={`text-[14px] ${darkMode ? 'text-white' : 'text-[#030733]'}`}>סנן</span>
-              </button>
+            {/* Search Bar with Select All */}
+            <div className="flex gap-2 items-center">
               <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[8px] px-4 py-3 flex-1 flex items-center gap-3`}>
                 <input
                   type="text"
-                  placeholder="חפש נמענים"
+                  placeholder="חפש קמפיינים"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className={`flex-1 bg-transparent outline-none text-[14px] text-right ${darkMode ? 'text-white placeholder-gray-400' : 'text-[#505050]'}`}
                 />
                 <Search className={`${darkMode ? 'text-gray-400' : 'text-[#505050]'}`} size={20} />
               </div>
-            </div>
 
-            {/* Campaign List */}
-            <div className="space-y-2 max-h-[calc(100vh-400px)] overflow-y-auto">
-              {/* Select All Header */}
+              {/* Select All - compact */}
               {filteredCampaigns.length > 0 && (
-                <div className={`${darkMode ? 'bg-[#1a2d4a]' : 'bg-[#E8E9ED]'} rounded-[10px] px-4 py-3 flex items-center gap-3`}>
+                <label className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[8px] px-3 py-3 flex items-center gap-2 cursor-pointer`}>
                   <input
                     type="checkbox"
                     checked={allSelected}
@@ -1212,15 +1238,17 @@ function AnalyticsContent() {
                       if (el) el.indeterminate = someSelected
                     }}
                     onChange={handleSelectAll}
-                    className={`w-[17px] h-[17px] rounded border cursor-pointer ${darkMode ? 'border-gray-400' : 'border-[#030733]'}`}
+                    className={`w-[15px] h-[15px] rounded border cursor-pointer ${darkMode ? 'border-gray-400' : 'border-[#030733]'}`}
                   />
-                  <span className={`text-[13px] ${darkMode ? 'text-gray-300' : 'text-[#595C7A]'}`}>
-                    {checkedCampaigns.size > 0
-                      ? `נבחרו ${checkedCampaigns.size} קמפיינים`
-                      : 'בחר הכל'}
+                  <span className={`text-[12px] whitespace-nowrap ${darkMode ? 'text-gray-300' : 'text-[#595C7A]'}`}>
+                    {checkedCampaigns.size > 0 ? `${checkedCampaigns.size}` : 'הכל'}
                   </span>
-                </div>
+                </label>
               )}
+            </div>
+
+            {/* Campaign List */}
+            <div className="space-y-2 max-h-[calc(100vh-400px)] overflow-y-auto">
               {filteredCampaigns.length === 0 ? (
                 <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[10px] p-8 text-center`}>
                   <Users className={`w-12 h-12 mx-auto mb-4 ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`} />
