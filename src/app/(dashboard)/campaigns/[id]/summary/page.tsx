@@ -488,8 +488,10 @@ export default function CampaignSummaryPage() {
       const avgDelay = (DELAY_MIN + DELAY_MAX) / 2
       totalSeconds = messagesForToday * avgDelay
 
-      const numberOfBulks = Math.floor(messagesForToday / MESSAGES_PER_BULK)
-      for (let i = 0; i < numberOfBulks; i++) {
+      // Add bulk pauses only for COMPLETED bulks (not the last one if it's exactly 30/60/90)
+      // Only add pause if there are messages after the bulk
+      const numberOfCompletedBulks = Math.floor((messagesForToday - 1) / MESSAGES_PER_BULK)
+      for (let i = 0; i < numberOfCompletedBulks; i++) {
         const pauseIndex = Math.min(i, BULK_PAUSE_SECONDS.length - 1)
         totalSeconds += BULK_PAUSE_SECONDS[pauseIndex]
       }
