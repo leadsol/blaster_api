@@ -1179,6 +1179,22 @@ function NewCampaignContent() {
       return
     }
 
+    // Validate recipients
+    if (!recipients || recipients.length === 0) {
+      setAlertPopup({ show: true, message: 'לא ניתן לשמור טיוטה ללא נמענים. נא להוסיף לפחות נמען אחד.' })
+      return
+    }
+
+    // Validate that all recipients have phone numbers
+    const recipientsWithoutPhone = recipients.filter(r => !r.phone || r.phone.trim() === '')
+    if (recipientsWithoutPhone.length > 0) {
+      setAlertPopup({
+        show: true,
+        message: `יש ${recipientsWithoutPhone.length} נמענים ללא מספר טלפון. נא למלא את כל המספרים או למחוק את הנמענים הריקים.`
+      })
+      return
+    }
+
     setSavingDraft(true)
 
     try {

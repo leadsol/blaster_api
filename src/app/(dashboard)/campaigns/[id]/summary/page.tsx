@@ -545,6 +545,19 @@ export default function CampaignSummaryPage() {
 
   const launchCampaign = () => {
     if (!campaign) return
+
+    // Validate all messages have phone numbers
+    const messagesWithoutPhone = messages.filter(m => !m.phone || m.phone.trim() === '')
+    if (messagesWithoutPhone.length > 0) {
+      setAlertModal({
+        isOpen: true,
+        title: 'לא ניתן לשגר קמפיין',
+        message: `יש ${messagesWithoutPhone.length} נמענים ללא מספר טלפון. נא למלא את כל המספרים או למחוק את הנמענים הריקים.`,
+        type: 'error'
+      })
+      return
+    }
+
     setShowLaunchConfirm(true)
   }
 
