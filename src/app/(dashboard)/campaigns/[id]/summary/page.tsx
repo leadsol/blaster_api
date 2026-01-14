@@ -312,12 +312,21 @@ export default function CampaignSummaryPage() {
   const saveEdit = async () => {
     if (!editingId || !editData) return
 
+    // Normalize phone number: convert 05X to 972X
+    let normalizedPhone = editData.phone.trim()
+    if (normalizedPhone.startsWith('05')) {
+      normalizedPhone = '972' + normalizedPhone.substring(1)
+    } else if (normalizedPhone.startsWith('0')) {
+      // Handle other Israeli formats like 02, 03, 04, etc.
+      normalizedPhone = '972' + normalizedPhone.substring(1)
+    }
+
     const supabase = createClient()
     const { error } = await supabase
       .from('campaign_messages')
       .update({
         name: editData.name || null,
-        phone: editData.phone,
+        phone: normalizedPhone,
         message_content: editData.message_content,
         variables: editData.variables
       })
@@ -333,10 +342,10 @@ export default function CampaignSummaryPage() {
       return
     }
 
-    // Update local state
+    // Update local state with normalized phone
     setMessages(messages.map(m =>
       m.id === editingId
-        ? { ...m, name: editData.name || null, phone: editData.phone, message_content: editData.message_content, variables: editData.variables }
+        ? { ...m, name: editData.name || null, phone: normalizedPhone, message_content: editData.message_content, variables: editData.variables }
         : m
     ))
     setEditingId(null)

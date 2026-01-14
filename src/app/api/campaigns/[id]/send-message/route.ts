@@ -82,7 +82,8 @@ async function handler(
         .from('campaign_messages')
         .update({
           status: 'failed',
-          error_message: 'אין מכשיר מחובר'
+          error_message: 'אין מכשיר מחובר',
+          failed_at: new Date().toISOString()
         })
         .eq('id', messageId)
 
@@ -228,7 +229,8 @@ async function handler(
         .from('campaign_messages')
         .update({
           status: 'failed',
-          error_message: 'שליחה נכשלה'
+          error_message: 'שליחה נכשלה',
+          failed_at: new Date().toISOString()
         })
         .eq('id', messageId)
 

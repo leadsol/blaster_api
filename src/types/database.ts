@@ -258,6 +258,7 @@ export interface Database {
           sent_at: string | null
           delivered_at: string | null
           read_at: string | null
+          failed_at: string | null
           created_at: string
         }
         Insert: {
@@ -272,6 +273,7 @@ export interface Database {
           sent_at?: string | null
           delivered_at?: string | null
           read_at?: string | null
+          failed_at?: string | null
           created_at?: string
         }
         Update: {
@@ -286,6 +288,7 @@ export interface Database {
           sent_at?: string | null
           delivered_at?: string | null
           read_at?: string | null
+          failed_at?: string | null
           created_at?: string
         }
       }

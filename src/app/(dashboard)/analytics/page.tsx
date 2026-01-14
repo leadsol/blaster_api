@@ -34,6 +34,7 @@ interface Recipient {
   name?: string
   status: 'pending' | 'sent' | 'delivered' | 'read' | 'replied' | 'failed' | 'cancelled'
   sent_at?: string
+  failed_at?: string
   created_at?: string
   message_content?: string
   sent_message_content?: string // The actual message that was sent (after variation selection)
@@ -147,9 +148,9 @@ function AnalyticsContent() {
   // Helper function to sort recipients by send order (most recent first)
   const sortRecipients = (recipientsList: Recipient[]): Recipient[] => {
     return [...recipientsList].sort((a, b) => {
-      // Sort by sent_at first (most recent sent at top), then by created_at
-      const aTime = a.sent_at || a.created_at || ''
-      const bTime = b.sent_at || b.created_at || ''
+      // Sort by most recent activity - sent_at or failed_at, then created_at
+      const aTime = a.sent_at || a.failed_at || a.created_at || ''
+      const bTime = b.sent_at || b.failed_at || b.created_at || ''
       return new Date(bTime).getTime() - new Date(aTime).getTime()
     })
   }
@@ -304,18 +305,18 @@ function AnalyticsContent() {
     setRecipientsLoading(true)
     const supabase = createClient()
     // Load ALL recipients (not limited) to get accurate counts
-    // Sort by created_at to maintain order, and put sent messages with time first
+    // Include failed_at for proper sorting
     const { data } = await supabase
       .from('campaign_messages')
-      .select('id, phone, name, status, sent_at, message_content, sent_message_content, sender_session_name, sender_phone, variables, error_message, created_at')
+      .select('id, phone, name, status, sent_at, failed_at, message_content, sent_message_content, sender_session_name, sender_phone, variables, error_message, created_at')
       .eq('campaign_id', campaignId)
       .order('created_at', { ascending: true })
 
     if (data) {
-      // Sort by send order - most recent sent/processed first
+      // Sort by most recent activity - prioritize sent_at or failed_at, then created_at
       const sorted = [...data].sort((a, b) => {
-        const aTime = a.sent_at || a.created_at
-        const bTime = b.sent_at || b.created_at
+        const aTime = a.sent_at || a.failed_at || a.created_at
+        const bTime = b.sent_at || b.failed_at || b.created_at
         return new Date(bTime).getTime() - new Date(aTime).getTime()
       })
       setRecipients(sorted)
@@ -605,12 +606,13 @@ function AnalyticsContent() {
     if (!selectedCampaign || recipients.length === 0) return
 
     // Create CSV content
-    const headers = ['טלפון', 'שם', 'סטטוס', 'זמן שליחה', 'משתנים']
+    const headers = ['טלפון', 'שם', 'סטטוס', 'זמן שליחה', 'זמן כישלון', 'משתנים']
     const rows = recipients.map(r => [
       r.phone,
       r.name || '',
       r.status,
       r.sent_at ? new Date(r.sent_at).toLocaleString('he-IL') : '',
+      r.failed_at ? new Date(r.failed_at).toLocaleString('he-IL') : '',
       r.variables ? JSON.stringify(r.variables) : ''
     ])
 
@@ -1106,6 +1108,8 @@ function AnalyticsContent() {
                               <span className={`text-[12px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
                                 {recipient.sent_at
                                   ? new Date(recipient.sent_at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
+                                  : recipient.failed_at
+                                  ? new Date(recipient.failed_at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
                                   : '-'}
                               </span>
                             </div>
@@ -1394,11 +1398,19 @@ function AnalyticsContent() {
                   <span className={`text-[14px] font-medium ${darkMode ? 'text-white' : 'text-[#030733]'}`}>טלפון</span>
                 </div>
                 {selectedRecipient.sent_at && (
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between mb-2">
                     <span className={`text-[14px] ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
                       {new Date(selectedRecipient.sent_at).toLocaleString('he-IL')}
                     </span>
                     <span className={`text-[14px] font-medium ${darkMode ? 'text-white' : 'text-[#030733]'}`}>זמן שליחה</span>
+                  </div>
+                )}
+                {selectedRecipient.failed_at && (
+                  <div className="flex items-center justify-between">
+                    <span className={`text-[14px] ${darkMode ? 'text-red-300' : 'text-red-600'}`}>
+                      {new Date(selectedRecipient.failed_at).toLocaleString('he-IL')}
+                    </span>
+                    <span className={`text-[14px] font-medium ${darkMode ? 'text-red-300' : 'text-red-600'}`}>זמן כישלון</span>
                   </div>
                 )}
               </div>
