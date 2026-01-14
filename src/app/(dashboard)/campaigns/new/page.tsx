@@ -270,9 +270,9 @@ function NewCampaignContent() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedRecipients, setSelectedRecipients] = useState<Set<string>>(new Set())
 
-  // Delay settings
-  const [delayMin, setDelayMin] = useState(3)
-  const [delayMax, setDelayMax] = useState(10)
+  // Delay settings (10-60 seconds between messages for safe delivery)
+  const [delayMin, setDelayMin] = useState(10)
+  const [delayMax, setDelayMax] = useState(60)
 
   // Track if form has been modified (for unsaved changes warning)
   const [formModified, setFormModified] = useState(false)
