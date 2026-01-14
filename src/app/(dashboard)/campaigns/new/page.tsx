@@ -1002,7 +1002,7 @@ function NewCampaignContent() {
     }
 
     // Check if any selected devices are busy in running campaigns
-    const devicesToCheck = useMultiDevice ? selectedDevices : [selectedConnection]
+    const devicesToCheck = hasMultiDevice ? selectedDevices : [selectedConnection]
     const supabase = createClient()
 
     for (const deviceId of devicesToCheck) {
