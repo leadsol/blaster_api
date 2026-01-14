@@ -129,6 +129,24 @@ async function handler(
       return NextResponse.json({ success: true, completed: true })
     }
 
+    // Count how many messages have been successfully sent so far (for bulk pause calculation)
+    const { count: totalSentCount } = await supabase
+      .from('campaign_messages')
+      .select('*', { count: 'exact', head: true })
+      .eq('campaign_id', campaignId)
+      .eq('status', 'sent')
+
+    const sentSoFar = totalSentCount || 0
+    console.log(`[PROCESS-BATCH] Total sent messages so far: ${sentSoFar}`)
+
+    // Bulk pause configuration
+    const MESSAGES_PER_BULK = 30
+    const BULK_PAUSE_SECONDS = [
+      30 * 60,    // After 1st bulk (30 messages): 30 minutes
+      60 * 60,    // After 2nd bulk (60 messages): 1 hour
+      90 * 60,    // After 3rd bulk (90 messages): 1.5 hours - and this repeats
+    ]
+
     // Schedule messages with RANDOM delays between 10-60 seconds
     // This ensures safe spacing to avoid WhatsApp blocking
     let scheduledCount = 0
@@ -160,6 +178,24 @@ async function handler(
 
         // Accumulate the spacing
         cumulativeDelay += spacing
+        delayFromNow = cumulativeDelay
+      }
+
+      // Dynamic bulk pause: Check if we're crossing a bulk boundary based on SENT messages
+      // This ensures failures don't count towards bulk pause
+      const messagesWillBeSentAfterThis = sentSoFar + scheduledCount + 1
+      const currentBulkNumber = Math.floor(sentSoFar / MESSAGES_PER_BULK)
+      const newBulkNumber = Math.floor(messagesWillBeSentAfterThis / MESSAGES_PER_BULK)
+
+      // If we're crossing into a new bulk, add bulk pause
+      if (newBulkNumber > currentBulkNumber) {
+        const pauseIndex = Math.min(newBulkNumber - 1, BULK_PAUSE_SECONDS.length - 1)
+        const bulkPause = BULK_PAUSE_SECONDS[pauseIndex]
+
+        console.log(`🛑 [PROCESS-BATCH] Bulk boundary crossed! Adding ${bulkPause}s (${bulkPause/60} min) pause after message ${messagesWillBeSentAfterThis}`)
+        console.log(`   📊 Sent so far: ${sentSoFar}, After this: ${messagesWillBeSentAfterThis}, Bulk: ${currentBulkNumber} → ${newBulkNumber}`)
+
+        cumulativeDelay += bulkPause
         delayFromNow = cumulativeDelay
       }
 

@@ -2,6 +2,44 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import { waha } from '@/lib/waha'
 import { verifySignatureAppRouter } from '@upstash/qstash/nextjs'
+import { Client as QStashClient } from '@upstash/qstash'
+
+const qstash = new QStashClient({ token: process.env.QSTASH_TOKEN || '' })
+
+// Helper function to schedule next pending message immediately (after failure)
+async function scheduleNextMessageImmediately(campaignId: string) {
+  const supabase = createAdminClient()
+
+  // Get the next pending message
+  const { data: nextMessage } = await supabase
+    .from('campaign_messages')
+    .select('id')
+    .eq('campaign_id', campaignId)
+    .eq('status', 'pending')
+    .order('scheduled_delay_seconds', { ascending: true })
+    .limit(1)
+    .single()
+
+  if (!nextMessage) {
+    console.log('[SEND-MESSAGE] No next message to schedule')
+    return
+  }
+
+  // Schedule it immediately (5 seconds delay to avoid rate limiting)
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL && process.env.NEXT_PUBLIC_APP_URL !== 'http://localhost:3000'
+    ? process.env.NEXT_PUBLIC_APP_URL
+    : (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
+
+  const endpoint = `${appUrl}/api/campaigns/${campaignId}/send-message`
+
+  console.log(`⚡ [SEND-MESSAGE] Scheduling next message ${nextMessage.id} IMMEDIATELY (5s delay) after failure`)
+
+  await qstash.publishJSON({
+    url: endpoint,
+    body: { messageId: nextMessage.id },
+    delay: 5 // 5 seconds delay
+  })
+}
 
 // This endpoint is called by QStash to send a single message
 async function handler(
@@ -86,6 +124,9 @@ async function handler(
           failed_at: new Date().toISOString()
         })
         .eq('id', messageId)
+
+      // Schedule next message immediately after failure
+      await scheduleNextMessageImmediately(campaignId)
 
       return NextResponse.json({ error: 'No connected device' }, { status: 400 })
     }
@@ -245,6 +286,9 @@ async function handler(
         .from('campaigns')
         .update({ failed_count: failedCount?.length || 0 })
         .eq('id', campaignId)
+
+      // Schedule next message immediately after failure
+      await scheduleNextMessageImmediately(campaignId)
 
       return NextResponse.json({ error: 'Send failed' }, { status: 500 })
     }
