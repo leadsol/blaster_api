@@ -1343,18 +1343,18 @@ function AnalyticsContent() {
             {/* TOP ROW: Selected Campaign + Send Time + Response Time - RESPONSIVE */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 md:gap-4">
               {/* Selected Campaign Card - Dark - Compact */}
-              <div className="bg-[#030733] rounded-[8px] sm:rounded-[10px] md:rounded-[12px] px-3 sm:px-4 md:px-5 xl:px-6 py-2 sm:py-2.5 md:py-3 xl:py-4 text-white">
-                <h3 className="text-[11px] sm:text-[12px] md:text-[13px] lg:text-[14px] xl:text-[15px] 2xl:text-[16px] font-semibold mb-0.5 sm:mb-1 text-right">הקמפיין שבחרת</h3>
+              <div className="bg-[#030733] rounded-[8px] sm:rounded-[10px] md:rounded-[12px] px-3 sm:px-4 md:px-5 xl:px-6 py-3 sm:py-4 md:py-5 xl:py-6 text-white min-h-[80px] sm:min-h-[90px] md:min-h-[100px] lg:min-h-[110px] flex flex-col justify-center">
+                <h3 className="text-[11px] sm:text-[12px] md:text-[13px] lg:text-[14px] xl:text-[15px] 2xl:text-[16px] font-semibold mb-1 sm:mb-1.5 md:mb-2 text-right">הקמפיין שבחרת</h3>
                 <p className="text-[10px] sm:text-[11px] md:text-[12px] lg:text-[13px] xl:text-[14px] text-right truncate">{selectedCampaign?.name || 'בחר קמפיין'}</p>
 
                 {/* Active Hours - if enabled */}
                 {selectedCampaign?.respect_active_hours && selectedCampaign?.active_hours_start && selectedCampaign?.active_hours_end && (
-                  <div className="flex items-center gap-1 sm:gap-1.5 md:gap-2 justify-end mt-1 sm:mt-1.5 md:mt-2 mb-0.5 sm:mb-1">
-                    <span className="text-[9px] sm:text-[10px] md:text-[11px] lg:text-[12px] text-[#B5B5B5]">
+                  <div className="flex items-center gap-1 sm:gap-1.5 md:gap-2 justify-end mt-2 sm:mt-2.5 md:mt-3">
+                    <span className="text-[10px] sm:text-[11px] md:text-[12px] lg:text-[13px] text-[#B5B5B5] font-medium">
                       {selectedCampaign.active_hours_start.slice(0, 5)} - {selectedCampaign.active_hours_end.slice(0, 5)}
                     </span>
-                    <Clock size={11} className="text-[#0043E0] flex-shrink-0" />
-                    <span className="text-[8px] sm:text-[9px] md:text-[10px] lg:text-[11px] text-[#8A8A8A]">שעות פעילות</span>
+                    <Clock size={13} className="text-[#0043E0] flex-shrink-0" />
+                    <span className="text-[9px] sm:text-[10px] md:text-[11px] lg:text-[12px] text-[#8A8A8A]">שעות פעילות</span>
                   </div>
                 )}
 
@@ -1378,8 +1378,8 @@ function AnalyticsContent() {
               </div>
 
               {/* Send Time Card - Compact with countdown - RESPONSIVE */}
-              <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[8px] sm:rounded-[10px] md:rounded-[12px] px-3 sm:px-4 md:px-5 xl:px-6 py-2 sm:py-2.5 md:py-3 xl:py-4`}>
-                <h3 className={`text-[11px] sm:text-[12px] md:text-[13px] lg:text-[14px] xl:text-[15px] 2xl:text-[16px] font-semibold mb-0.5 sm:mb-1 text-right ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+              <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[8px] sm:rounded-[10px] md:rounded-[12px] px-3 sm:px-4 md:px-5 xl:px-6 py-3 sm:py-4 md:py-5 xl:py-6 min-h-[80px] sm:min-h-[90px] md:min-h-[100px] lg:min-h-[110px] flex flex-col justify-center`}>
+                <h3 className={`text-[11px] sm:text-[12px] md:text-[13px] lg:text-[14px] xl:text-[15px] 2xl:text-[16px] font-semibold mb-1 sm:mb-1.5 md:mb-2 text-right ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
                   {(selectedCampaign?.status === 'running' || selectedCampaign?.status === 'paused') && countdown
                     ? (selectedCampaign?.status === 'paused' ? 'זמן שנותר (מושהה)' : 'זמן שנותר')
                     : (selectedCampaign?.status === 'running' || selectedCampaign?.status === 'paused') ? 'הושלם' : 'זמן שליחת הקמפיין'}
@@ -1429,8 +1429,8 @@ function AnalyticsContent() {
               </div>
 
               {/* Device Messages Distribution Card - Shows how many messages each device sent */}
-              <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[10px] px-4 py-3`}>
-                <h3 className={`text-[14px] font-semibold mb-1 text-right ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+              <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[8px] sm:rounded-[10px] md:rounded-[12px] px-3 sm:px-4 md:px-5 xl:px-6 py-3 sm:py-4 md:py-5 xl:py-6 min-h-[80px] sm:min-h-[90px] md:min-h-[100px] lg:min-h-[110px] flex flex-col justify-center`}>
+                <h3 className={`text-[11px] sm:text-[12px] md:text-[13px] lg:text-[14px] xl:text-[15px] 2xl:text-[16px] font-semibold mb-1 sm:mb-1.5 md:mb-2 text-right ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
                   הודעות לפי מכשיר
                 </h3>
                 {selectedCampaign && Object.keys(deviceMessagesCount).length > 0 ? (
@@ -1462,7 +1462,7 @@ function AnalyticsContent() {
             {/* BOTTOM ROW: Recipients Panel + Stats Column - RESPONSIVE */}
             <div className="grid grid-cols-1 lg:grid-cols-7 gap-2 sm:gap-3 md:gap-4 flex-1">
               {/* Recipients Panel - RESPONSIVE */}
-              <div className={`lg:col-span-4 ${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[10px] sm:rounded-[12px] md:rounded-[15px] p-3 sm:p-4 md:p-5 flex flex-col`}>
+              <div className={`lg:col-span-4 ${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[10px] sm:rounded-[12px] md:rounded-[15px] p-4 sm:p-5 md:p-6 flex flex-col min-h-[400px] sm:min-h-[450px] md:min-h-[500px]`}>
                 <h3 className={`text-[13px] sm:text-[14px] md:text-[16px] lg:text-[17px] xl:text-[18px] 2xl:text-[20px] font-semibold mb-2 sm:mb-3 md:mb-4 text-right ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
                   נמענים בקמפיין זה
                 </h3>
@@ -1484,21 +1484,21 @@ function AnalyticsContent() {
                   </div>
                 </div>
 
-                <div className="overflow-y-auto max-h-[500px]">
+                <div className="overflow-y-auto max-h-[300px] sm:max-h-[350px] md:max-h-[400px] lg:max-h-[500px]">
                   {!selectedCampaign ? (
-                    <div className="flex items-center justify-center h-[280px]">
+                    <div className="flex items-center justify-center h-[200px] sm:h-[220px] md:h-[250px] lg:h-[280px]">
                       <p className={`text-[14px] ${darkMode ? 'text-white' : 'text-[#030733]'}`}>אנא בחר קמפיין לצפייה בנתונים</p>
                     </div>
                   ) : recipientsLoading ? (
-                    <div className="flex items-center justify-center h-[280px]">
+                    <div className="flex items-center justify-center h-[200px] sm:h-[220px] md:h-[250px] lg:h-[280px]">
                       <Loader2 className="w-8 h-8 animate-spin text-[#0043E0]" />
                     </div>
                   ) : recipients.length === 0 ? (
-                    <div className="flex items-center justify-center h-[280px]">
+                    <div className="flex items-center justify-center h-[200px] sm:h-[220px] md:h-[250px] lg:h-[280px]">
                       <p className={`text-[14px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>אין נמענים בקמפיין זה</p>
                     </div>
                   ) : filteredRecipients.length === 0 ? (
-                    <div className="flex items-center justify-center h-[280px]">
+                    <div className="flex items-center justify-center h-[200px] sm:h-[220px] md:h-[250px] lg:h-[280px]">
                       <p className={`text-[14px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>לא נמצאו נמענים לחיפוש זה</p>
                     </div>
                   ) : (
@@ -1574,7 +1574,7 @@ function AnalyticsContent() {
               {/* Stats Column - RESPONSIVE */}
               <div className="lg:col-span-3 space-y-2 sm:space-y-3 md:space-y-4">
                 {/* Stats Overview - Donut Chart + Percentages - RESPONSIVE */}
-                <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[10px] sm:rounded-[12px] md:rounded-[15px] p-3 sm:p-4 md:p-5`}>
+                <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[10px] sm:rounded-[12px] md:rounded-[15px] p-4 sm:p-5 md:p-6 min-h-[300px] sm:min-h-[350px] md:min-h-[400px]`}>
                   <h3 className={`text-[12px] sm:text-[13px] md:text-[14px] lg:text-[15px] xl:text-[16px] 2xl:text-[18px] font-semibold mb-2 sm:mb-3 md:mb-4 text-right ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
                     סקירת שליחת הודעות
                   </h3>
@@ -1647,7 +1647,7 @@ function AnalyticsContent() {
                 </div>
 
                 {/* Responses Received - RESPONSIVE */}
-                <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[8px] sm:rounded-[10px] p-2 sm:p-3 md:p-4`}>
+                <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[8px] sm:rounded-[10px] p-3 sm:p-4 md:p-5 min-h-[100px] sm:min-h-[110px] md:min-h-[120px]`}>
                   <div className="flex items-center justify-between mb-2 sm:mb-2.5 md:mb-3">
                     <MessageCircle size={14} className={`${darkMode ? 'text-white' : 'text-[#030733]'} flex-shrink-0`} />
                     <h3 className={`text-[11px] sm:text-[12px] md:text-[13px] lg:text-[14px] xl:text-[15px] font-semibold ${darkMode ? 'text-white' : 'text-[#030733]'}`}>תגובות שהתקבלו</h3>
@@ -1669,7 +1669,7 @@ function AnalyticsContent() {
                 </div>
 
                 {/* Messages Viewed - RESPONSIVE */}
-                <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[8px] sm:rounded-[10px] p-2 sm:p-3 md:p-4`}>
+                <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[8px] sm:rounded-[10px] p-3 sm:p-4 md:p-5 min-h-[100px] sm:min-h-[110px] md:min-h-[120px]`}>
                   <div className="flex items-center justify-between mb-2 sm:mb-2.5 md:mb-3">
                     <CheckCheck size={14} className={`${darkMode ? 'text-white' : 'text-[#030733]'} flex-shrink-0`} />
                     <h3 className={`text-[11px] sm:text-[12px] md:text-[13px] lg:text-[14px] xl:text-[15px] font-semibold ${darkMode ? 'text-white' : 'text-[#030733]'}`}>הודעות שנצפו</h3>
