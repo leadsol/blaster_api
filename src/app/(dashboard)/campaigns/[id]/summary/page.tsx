@@ -463,9 +463,14 @@ export default function CampaignSummaryPage() {
     // Get today's messages
     const messagesForToday = Math.min(totalMessages, totalDailyLimit)
 
+    // Sort messages by scheduled_delay_seconds to get the correct last message
+    const sortedMessages = [...messages].sort((a, b) =>
+      (a.scheduled_delay_seconds || 0) - (b.scheduled_delay_seconds || 0)
+    )
+
     // Use pre-calculated delay from the last message of today's batch
     // This is the EXACT time since delays were randomly generated during campaign creation
-    const lastTodayMessage = messages[messagesForToday - 1]
+    const lastTodayMessage = sortedMessages[messagesForToday - 1]
     let totalSeconds = lastTodayMessage?.scheduled_delay_seconds || 0
 
     console.log('Duration calc - messagesForToday:', messagesForToday, 'lastTodayMessage index:', messagesForToday - 1)

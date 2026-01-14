@@ -35,7 +35,8 @@
       "Bash(git commit:*)",
       "Bash(git restore:*)",
       "Bash(git reset:*)",
-      "Bash(docker logs:*)"
+      "Bash(docker logs:*)",
+      "Bash(npx supabase db execute:*)"
     ]
   }
 }

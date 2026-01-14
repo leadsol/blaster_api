@@ -144,11 +144,12 @@ export interface Database {
           name: string
           message_template: string
           media_url: string | null
-          media_type: 'image' | 'video' | 'document' | null
-          status: 'draft' | 'scheduled' | 'running' | 'paused' | 'completed' | 'failed'
+          media_type: 'image' | 'video' | 'document' | 'audio' | null
+          status: 'draft' | 'scheduled' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled'
           scheduled_at: string | null
           started_at: string | null
           completed_at: string | null
+          paused_at: string | null
           total_recipients: number
           sent_count: number
           delivered_count: number
@@ -157,6 +158,17 @@ export interface Database {
           reply_count: number
           delay_min: number
           delay_max: number
+          pause_after_messages: number | null
+          pause_seconds: number | null
+          estimated_duration: number | null
+          new_list_name: string | null
+          existing_list_id: string | null
+          multi_device: boolean
+          device_ids: string[] | null
+          message_variations: string[] | null
+          poll_question: string | null
+          poll_options: string[] | null
+          poll_multiple_answers: boolean
           created_at: string
           updated_at: string
         }
@@ -168,11 +180,12 @@ export interface Database {
           name: string
           message_template: string
           media_url?: string | null
-          media_type?: 'image' | 'video' | 'document' | null
-          status?: 'draft' | 'scheduled' | 'running' | 'paused' | 'completed' | 'failed'
+          media_type?: 'image' | 'video' | 'document' | 'audio' | null
+          status?: 'draft' | 'scheduled' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled'
           scheduled_at?: string | null
           started_at?: string | null
           completed_at?: string | null
+          paused_at?: string | null
           total_recipients?: number
           sent_count?: number
           delivered_count?: number
@@ -181,6 +194,17 @@ export interface Database {
           reply_count?: number
           delay_min?: number
           delay_max?: number
+          pause_after_messages?: number | null
+          pause_seconds?: number | null
+          estimated_duration?: number | null
+          new_list_name?: string | null
+          existing_list_id?: string | null
+          multi_device?: boolean
+          device_ids?: string[] | null
+          message_variations?: string[] | null
+          poll_question?: string | null
+          poll_options?: string[] | null
+          poll_multiple_answers?: boolean
           created_at?: string
           updated_at?: string
         }
@@ -192,11 +216,12 @@ export interface Database {
           name?: string
           message_template?: string
           media_url?: string | null
-          media_type?: 'image' | 'video' | 'document' | null
-          status?: 'draft' | 'scheduled' | 'running' | 'paused' | 'completed' | 'failed'
+          media_type?: 'image' | 'video' | 'document' | 'audio' | null
+          status?: 'draft' | 'scheduled' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled'
           scheduled_at?: string | null
           started_at?: string | null
           completed_at?: string | null
+          paused_at?: string | null
           total_recipients?: number
           sent_count?: number
           delivered_count?: number
@@ -205,6 +230,17 @@ export interface Database {
           reply_count?: number
           delay_min?: number
           delay_max?: number
+          pause_after_messages?: number | null
+          pause_seconds?: number | null
+          estimated_duration?: number | null
+          new_list_name?: string | null
+          existing_list_id?: string | null
+          multi_device?: boolean
+          device_ids?: string[] | null
+          message_variations?: string[] | null
+          poll_question?: string | null
+          poll_options?: string[] | null
+          poll_multiple_answers?: boolean
           created_at?: string
           updated_at?: string
         }

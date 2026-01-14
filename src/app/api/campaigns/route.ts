@@ -144,8 +144,10 @@ export async function POST(request: NextRequest) {
         .upsert(blacklistEntries, { onConflict: 'user_id,phone', ignoreDuplicates: true })
     }
 
-    // Determine campaign status - always start as draft until user launches
-    const status = 'draft'
+    // Determine campaign status based on scheduled_at
+    const now = new Date()
+    const scheduledDate = scheduled_at ? new Date(scheduled_at) : null
+    const status = scheduledDate && scheduledDate > now ? 'scheduled' : 'draft'
     const started_at = null
 
     // Create campaign

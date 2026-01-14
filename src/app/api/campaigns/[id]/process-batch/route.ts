@@ -84,7 +84,10 @@ async function handler(
 
       await supabase
         .from('campaigns')
-        .update({ status: 'paused' })
+        .update({
+          status: 'paused',
+          paused_at: new Date().toISOString()
+        })
         .eq('id', campaignId)
 
       return NextResponse.json({
