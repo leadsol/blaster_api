@@ -344,6 +344,9 @@ export async function PUT(
     ]
 
     let cumulativeDelaySeconds = 0
+    console.log(`🟣 [PUT] Creating messages for ${filteredRecipients.length} recipients`)
+    console.log(`🟣 [PUT] delay_min: ${delay_min}, delay_max: ${delay_max}`)
+
     const campaignMessages = filteredRecipients.map((recipient: { phone: string; name?: string; variables?: Record<string, string> }, index: number) => {
       let messageContent = message_template
       messageContent = messageContent.replace(/\{שם\}/g, recipient.name || '')
@@ -359,12 +362,19 @@ export async function PUT(
       const messageDelay = Math.floor(Math.random() * (delay_max - delay_min + 1)) + delay_min
       cumulativeDelaySeconds += messageDelay
 
-      // Add bulk pause if this message completes a bulk (every 30 messages)
+      // Add bulk pause ONLY if there are more messages after this bulk
+      // Don't add pause after the last message of a campaign
       const messageNumber = index + 1
-      if (messageNumber > 0 && messageNumber % MESSAGES_PER_BULK === 0) {
+      const isLastMessage = messageNumber === filteredRecipients.length
+
+      console.log(`🟣 [PUT] Message ${messageNumber}/${filteredRecipients.length}: delay=${messageDelay}s, cumulative=${cumulativeDelaySeconds}s, isLast=${isLastMessage}`)
+
+      if (!isLastMessage && messageNumber % MESSAGES_PER_BULK === 0) {
         const bulkIndex = Math.floor(messageNumber / MESSAGES_PER_BULK) - 1
         const pauseIndex = Math.min(bulkIndex, BULK_PAUSE_SECONDS.length - 1)
-        cumulativeDelaySeconds += BULK_PAUSE_SECONDS[pauseIndex]
+        const pauseAmount = BULK_PAUSE_SECONDS[pauseIndex]
+        console.log(`⏸️  [PUT] Adding bulk pause after message ${messageNumber}: ${pauseAmount}s (${pauseAmount/60} minutes)`)
+        cumulativeDelaySeconds += pauseAmount
       }
 
       return {
@@ -378,7 +388,9 @@ export async function PUT(
       }
     })
 
+    console.log(`✅ [PUT] Total estimated duration: ${cumulativeDelaySeconds}s (${(cumulativeDelaySeconds/60).toFixed(2)} minutes)`)
     console.log('Inserting', campaignMessages.length, 'new messages')
+
     const { error: messagesError } = await supabase
       .from('campaign_messages')
       .insert(campaignMessages)
@@ -395,6 +407,13 @@ export async function PUT(
       .eq('campaign_id', campaignId)
     console.log('Final message count after insert:', finalCount, 'rows:', finalMessages?.length)
 
+    // Update campaign with estimated duration
+    const estimatedDuration = cumulativeDelaySeconds
+    await supabase
+      .from('campaigns')
+      .update({ estimated_duration: estimatedDuration })
+      .eq('id', campaignId)
+
     // Get updated campaign
     const { data: updatedCampaign } = await supabase
       .from('campaigns')
@@ -404,7 +423,7 @@ export async function PUT(
 
     return NextResponse.json({
       success: true,
-      campaign: updatedCampaign,
+      campaign: { ...updatedCampaign, estimated_duration: estimatedDuration },
       message: 'הקמפיין עודכן בהצלחה'
     })
 
