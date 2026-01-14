@@ -43,15 +43,15 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const {
+    let {
       name,
       connection_id,
       message_template,
       media_url,
       media_type,
       scheduled_at,
-      delay_min = 10,
-      delay_max = 60,
+      delay_min,
+      delay_max,
       pause_after_messages,
       pause_seconds,
       recipients, // Array of { phone, name, variables }
@@ -67,6 +67,14 @@ export async function POST(request: NextRequest) {
       poll_options,
       poll_multiple_answers,
     } = body
+
+    // Ensure delay values are valid numbers with proper defaults
+    delay_min = Number(delay_min) || 10
+    delay_max = Number(delay_max) || 60
+
+    // Ensure delay_min is at least 10 seconds and delay_max is at least delay_min
+    delay_min = Math.max(10, delay_min)
+    delay_max = Math.max(delay_min, delay_max)
 
     // Validation - allow empty message if poll is present
     if (!name) {
