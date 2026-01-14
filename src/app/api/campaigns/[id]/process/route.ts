@@ -90,6 +90,37 @@ export async function POST(
       }, { status: 400 })
     }
 
+    // CRITICAL: Check if any of the devices are already busy in another running campaign
+    // This prevents race conditions where multiple campaigns try to use the same device
+    for (const device of connectedDevices) {
+      const { data: otherRunningCampaign } = await supabase
+        .from('campaigns')
+        .select('id, name')
+        .eq('status', 'running')
+        .neq('id', campaignId) // Exclude current campaign
+        .or(`connection_id.eq.${device.id},device_ids.cs.{${device.id}}`)
+        .limit(1)
+        .single()
+
+      if (otherRunningCampaign) {
+        console.error(`❌ [PROCESS] Device ${device.session_name} is busy in campaign "${otherRunningCampaign.name}"`)
+
+        // Mark campaign as failed - cannot start because device is busy
+        await supabase
+          .from('campaigns')
+          .update({
+            status: 'failed',
+            error_message: `המכשיר ${device.session_name} עסוק בקמפיין "${otherRunningCampaign.name}"`
+          })
+          .eq('id', campaignId)
+
+        return NextResponse.json({
+          error: `Device ${device.session_name} is busy in another campaign: "${otherRunningCampaign.name}"`,
+          busyCampaign: otherRunningCampaign.name
+        }, { status: 409 }) // 409 Conflict
+      }
+    }
+
     // Check if there are pending messages
     const { count: pendingCount } = await supabase
       .from('campaign_messages')

@@ -1205,6 +1205,56 @@ export default function CampaignSummaryPage() {
                   <span className="font-normal">{calculateEstimatedDuration()}</span>
                 </p>
               )}
+
+              {/* Messages per day breakdown */}
+              {(() => {
+                const totalMessages = messages.length
+                if (totalMessages === 0) return null
+
+                const BASE_MESSAGES_PER_DAY = 90
+                const BONUS_PER_VARIATION = 10
+                const variationCount = campaign?.message_variations?.length || 1
+                const variationBonus = variationCount > 1 ? (variationCount - 1) * BONUS_PER_VARIATION : 0
+                const messagesPerDayPerDevice = BASE_MESSAGES_PER_DAY + variationBonus
+                const deviceCount = campaign?.multi_device && campaign?.device_ids ? campaign.device_ids.length : 1
+                const totalDailyLimit = messagesPerDayPerDevice * deviceCount
+
+                const daysNeeded = Math.ceil(totalMessages / totalDailyLimit)
+
+                if (daysNeeded === 1) return null // No need to show if all messages fit in one day
+
+                // Calculate messages per day
+                const breakdown: { day: string; count: number }[] = []
+                let remaining = totalMessages
+
+                for (let i = 0; i < daysNeeded; i++) {
+                  const messagesThisDay = Math.min(remaining, totalDailyLimit)
+                  const dayLabel = i === 0 ? 'היום' : i === 1 ? 'מחר' : `יום ${i + 1}`
+                  breakdown.push({ day: dayLabel, count: messagesThisDay })
+                  remaining -= messagesThisDay
+                }
+
+                return (
+                  <div className="mt-4 pt-4 border-t border-white/10">
+                    <span className="font-semibold block mb-2">פילוג הודעות לפי ימים:</span>
+                    <div className={`p-3 rounded-lg space-y-2 ${darkMode ? 'bg-[#030733]' : 'bg-[#f2f3f8]'}`}>
+                      {breakdown.map((item, idx) => (
+                        <div key={idx} className="flex items-center justify-between">
+                          <span className={`text-sm ${darkMode ? 'text-white/70' : 'text-[#505050]'}`}>
+                            {item.day}
+                          </span>
+                          <span className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+                            {item.count} הודעות
+                          </span>
+                        </div>
+                      ))}
+                      <div className={`mt-2 pt-2 border-t text-xs ${darkMode ? 'border-white/10 text-white/50' : 'border-gray-200 text-gray-400'}`}>
+                        לימיט יומי: {totalDailyLimit} הודעות ({deviceCount} {deviceCount === 1 ? 'מכשיר' : 'מכשירים'} × {messagesPerDayPerDevice})
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
             </div>
           </div>
 

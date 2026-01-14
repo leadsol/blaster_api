@@ -57,6 +57,11 @@ interface Connection {
   phone_number: string | null
   display_name: string | null
   status: string
+  busy_in_campaign?: {
+    id: string
+    name: string
+    status: string
+  } | null
 }
 
 function NewCampaignContent() {
@@ -261,6 +266,7 @@ function NewCampaignContent() {
   // Data
   const [contactLists, setContactLists] = useState<ContactList[]>([])
   const [connections, setConnections] = useState<Connection[]>([])
+  const [deviceDailyLimits, setDeviceDailyLimits] = useState<Record<string, { sent: number, limit: number }>>({})
   const [selectedConnection, setSelectedConnection] = useState('')
   const [recipients, setRecipients] = useState<Recipient[]>([])
   const [allColumns, setAllColumns] = useState<string[]>([]) // All columns loaded from file (including שם, טלפון)
@@ -878,14 +884,107 @@ function NewCampaignContent() {
     console.log('Connections loaded:', connectionsData, 'Error:', connError)
 
     if (connectionsData && connectionsData.length > 0) {
-      setConnections(connectionsData)
-      // Auto-select first connection if available
+      // Check which devices are busy in running campaigns
+      const connectionsWithBusyStatus = await Promise.all(
+        connectionsData.map(async (conn) => {
+          // Find if this device is used in any running campaign
+          const { data: runningCampaigns } = await supabase
+            .from('campaigns')
+            .select('id, name, status')
+            .eq('status', 'running')
+            .or(`connection_id.eq.${conn.id},device_ids.cs.{${conn.id}}`)
+            .limit(1)
+            .single()
+
+          return {
+            ...conn,
+            busy_in_campaign: runningCampaigns || null
+          }
+        })
+      )
+
+      setConnections(connectionsWithBusyStatus)
+      // Auto-select first connection if available and not busy
       if (!selectedConnection) {
-        setSelectedConnection(connectionsData[0].id)
+        const availableConn = connectionsWithBusyStatus.find(c => !c.busy_in_campaign)
+        if (availableConn) {
+          setSelectedConnection(availableConn.id)
+        }
       }
+
+      // Calculate daily limits for each device
+      await calculateDeviceDailyLimits(connectionsWithBusyStatus)
     } else {
       console.log('No connections found or empty array')
     }
+  }
+
+  // Calculate how many messages each device can still send today
+  const calculateDeviceDailyLimits = async (devicesData: Connection[]) => {
+    const supabase = createClient()
+    const BASE_LIMIT = 90
+    const VARIATION_BONUS = 10
+    const limits: Record<string, { sent: number, limit: number }> = {}
+
+    const todayStart = new Date()
+    todayStart.setHours(0, 0, 0, 0)
+
+    for (const device of devicesData) {
+      if (!device.phone_number) {
+        limits[device.id] = { sent: 0, limit: BASE_LIMIT }
+        continue
+      }
+
+      // Get all campaigns using this device (including running, paused, scheduled)
+      const { data: deviceCampaigns } = await supabase
+        .from('campaigns')
+        .select('message_variations, status')
+        .or(`connection_id.eq.${device.id},device_ids.cs.{${device.id}}`)
+        .in('status', ['running', 'paused', 'scheduled', 'draft']) // Active campaigns
+
+      // Find highest variation bonus for this device across all its active campaigns
+      let maxVariationBonus = 0
+      if (deviceCampaigns) {
+        deviceCampaigns.forEach(camp => {
+          const variations: string[] = camp.message_variations || []
+          const variationCount = variations.length > 1 ? variations.length : 0
+          const bonus = variationCount > 1 ? (variationCount - 1) * VARIATION_BONUS : 0
+          maxVariationBonus = Math.max(maxVariationBonus, bonus)
+        })
+      }
+
+      const deviceLimit = BASE_LIMIT + maxVariationBonus
+      console.log(`[DEVICE-LIMIT] ${device.display_name || device.session_name}: Base=${BASE_LIMIT}, Bonus=${maxVariationBonus}, Total=${deviceLimit}`)
+
+      // Count messages sent today from this device
+      const { data: campaignsUsingDevice } = await supabase
+        .from('campaigns')
+        .select('id')
+        .or(`connection_id.eq.${device.id},device_ids.cs.{${device.id}}`)
+
+      const campaignIds = campaignsUsingDevice?.map(c => c.id) || []
+
+      if (campaignIds.length === 0) {
+        limits[device.id] = { sent: 0, limit: deviceLimit }
+        continue
+      }
+
+      // Count sent messages today from this device
+      const { count: sentToday } = await supabase
+        .from('campaign_messages')
+        .select('id', { count: 'exact', head: true })
+        .in('campaign_id', campaignIds)
+        .eq('status', 'sent')
+        .eq('sender_phone', device.phone_number)
+        .gte('sent_at', todayStart.toISOString())
+
+      limits[device.id] = {
+        sent: sentToday || 0,
+        limit: deviceLimit
+      }
+    }
+
+    setDeviceDailyLimits(limits)
   }
 
   // Note: Phone normalization now handled by normalizePhone() utility function
@@ -900,6 +999,30 @@ function NewCampaignContent() {
     if (!selectedConnection) {
       setAlertPopup({ show: true, message: 'יש לבחור חיבור WhatsApp פעיל' })
       return
+    }
+
+    // Check if any selected devices are busy in running campaigns
+    const devicesToCheck = useMultiDevice ? selectedDevices : [selectedConnection]
+    const supabase = createClient()
+
+    for (const deviceId of devicesToCheck) {
+      const { data: runningCampaign } = await supabase
+        .from('campaigns')
+        .select('id, name, status')
+        .eq('status', 'running')
+        .or(`connection_id.eq.${deviceId},device_ids.cs.{${deviceId}}`)
+        .limit(1)
+        .single()
+
+      if (runningCampaign) {
+        const device = connections.find(c => c.id === deviceId)
+        const deviceName = device?.display_name || device?.session_name || 'לא ידוע'
+        setAlertPopup({
+          show: true,
+          message: `המכשיר "${deviceName}" עסוק בקמפיין "${runningCampaign.name}". אנא בחר מכשיר אחר.`
+        })
+        return
+      }
     }
 
     // Validation for message content - check variations if enabled
@@ -3864,19 +3987,27 @@ function NewCampaignContent() {
                           בחר מכשירים להפצה (כל מכשיר = 90 הודעות ליום):
                         </span>
                         <div className="flex flex-col gap-[6px]">
-                          {connections.map((conn) => (
+                          {connections.map((conn) => {
+                            const isBusy = conn.busy_in_campaign !== null && conn.busy_in_campaign !== undefined
+                            const isDisabled = isBusy
+
+                            return (
                             <label
                               key={conn.id}
-                              className={`flex items-center gap-[8px] p-[10px] rounded-[8px] cursor-pointer transition-colors ${
-                                selectedDevices.includes(conn.id)
-                                  ? darkMode ? 'bg-[#0043e0]/20 border border-[#0043e0]' : 'bg-blue-50 border border-blue-300'
-                                  : darkMode ? 'bg-[#1a2d4a] hover:bg-[#1a3358]' : 'bg-[#F2F3F8] hover:bg-gray-200'
+                              className={`flex items-center gap-[8px] p-[10px] rounded-[8px] transition-colors ${
+                                isDisabled
+                                  ? 'opacity-50 cursor-not-allowed bg-gray-100 dark:bg-gray-800'
+                                  : selectedDevices.includes(conn.id)
+                                  ? darkMode ? 'bg-[#0043e0]/20 border border-[#0043e0] cursor-pointer' : 'bg-blue-50 border border-blue-300 cursor-pointer'
+                                  : darkMode ? 'bg-[#1a2d4a] hover:bg-[#1a3358] cursor-pointer' : 'bg-[#F2F3F8] hover:bg-gray-200 cursor-pointer'
                               }`}
                             >
                               <input
                                 type="checkbox"
                                 checked={selectedDevices.includes(conn.id)}
+                                disabled={isDisabled}
                                 onChange={(e) => {
+                                  if (isDisabled) return
                                   if (e.target.checked) {
                                     setSelectedDevices([...selectedDevices, conn.id])
                                   } else {
@@ -3885,21 +4016,43 @@ function NewCampaignContent() {
                                 }}
                                 className="w-4 h-4 rounded"
                               />
-                              <span className={`text-[13px] ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
-                                {conn.display_name || conn.session_name}
-                              </span>
-                              {conn.phone_number && (
-                                <span className={`text-[11px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`} dir="ltr">
-                                  ({conn.phone_number})
-                                </span>
-                              )}
-                              <span className={`text-[10px] px-[6px] py-[2px] rounded ${
-                                conn.status === 'connected'
-                                  ? 'bg-green-500/20 text-green-500'
-                                  : 'bg-red-500/20 text-red-500'
-                              }`}>
-                                {conn.status === 'connected' ? 'מחובר' : 'מנותק'}
-                              </span>
+                              <div className="flex-1 flex items-center justify-between">
+                                <div className="flex items-center gap-[8px]">
+                                  <span className={`text-[13px] ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+                                    {conn.display_name || conn.session_name}
+                                  </span>
+                                  {conn.phone_number && (
+                                    <span className={`text-[11px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`} dir="ltr">
+                                      ({conn.phone_number})
+                                    </span>
+                                  )}
+                                  <span className={`text-[10px] px-[6px] py-[2px] rounded ${
+                                    conn.status === 'connected'
+                                      ? 'bg-green-500/20 text-green-500'
+                                      : 'bg-red-500/20 text-red-500'
+                                  }`}>
+                                    {conn.status === 'connected' ? 'מחובר' : 'מנותק'}
+                                  </span>
+                                  {/* Busy status indicator */}
+                                  {isBusy && conn.busy_in_campaign && (
+                                    <span className="text-[10px] px-[6px] py-[2px] rounded bg-red-500/20 text-red-500">
+                                      🔴 עסוק ב-"{conn.busy_in_campaign.name}"
+                                    </span>
+                                  )}
+                                </div>
+                                {/* Daily limit indicator */}
+                                {!isBusy && deviceDailyLimits[conn.id] && (
+                                  <span className={`text-[11px] font-medium ${
+                                    deviceDailyLimits[conn.id].sent >= deviceDailyLimits[conn.id].limit
+                                      ? 'text-red-500'
+                                      : deviceDailyLimits[conn.id].limit - deviceDailyLimits[conn.id].sent <= 10
+                                      ? 'text-orange-500'
+                                      : 'text-green-500'
+                                  }`}>
+                                    נשאר: {deviceDailyLimits[conn.id].limit - deviceDailyLimits[conn.id].sent}/{deviceDailyLimits[conn.id].limit}
+                                  </span>
+                                )}
+                              </div>
                             </label>
                           ))}
                         </div>

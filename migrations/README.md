@@ -84,4 +84,28 @@ ORDER BY column_name;
 
 ---
 
+### Migration: add_error_message_to_campaigns.sql
+
+**תיאור**: הוספת עמודת error_message לטבלת campaigns
+
+**חובה להריץ**: ✅ כן! בלי זה לא ניתן לראות שגיאות של קמפיינים שנכשלו
+
+**מתי להריץ**: מיד אחרי pull של הקוד החדש
+
+**מה זה מוסיף**:
+- `error_message` - הודעת שגיאה כאשר קמפיין נכשל (למשל: "המכשיר X עסוק בקמפיין Y")
+- אינדקס למציאת מהירה של קמפיינים כושלים עם הודעות שגיאה
+
+**לבדוק שרץ**:
+```sql
+SELECT column_name
+FROM information_schema.columns
+WHERE table_name = 'campaigns'
+AND column_name = 'error_message';
+```
+
+אמור להחזיר שורה אחת עם `error_message`.
+
+---
+
 ### תאריך: 14.01.2026

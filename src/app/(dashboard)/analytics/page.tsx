@@ -27,6 +27,11 @@ interface CampaignStats {
   paused_at?: string // When campaign was paused (for countdown)
   total_recipients: number
   estimated_duration?: number // in seconds
+  connection_id: string
+  device_ids?: string[]
+  multi_device?: boolean
+  message_variations?: string[]
+  error_message?: string // Error message when campaign fails
 }
 
 interface Recipient {
@@ -76,6 +81,7 @@ function AnalyticsContent() {
   const [dailyMessageCount, setDailyMessageCount] = useState<number>(0)
   const [dailyLimit, setDailyLimit] = useState<number>(0)
   const [resumeAt, setResumeAt] = useState<string | null>(null)
+  const [deviceMessagesCount, setDeviceMessagesCount] = useState<Record<string, number>>({}) // Per-device message count in selected campaign
 
   // Modal states
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -219,6 +225,16 @@ function AnalyticsContent() {
     }
   }, [selectedCampaign])
 
+  // Recalculate daily usage when device selection changes
+  useEffect(() => {
+    if (selectedConnection) {
+      calculateDailyUsageForDevice(selectedConnection.id)
+    } else {
+      setDailyMessageCount(0)
+      setDailyLimit(0)
+    }
+  }, [selectedConnection])
+
   // Countdown timer for running/paused campaigns
   useEffect(() => {
     const isRunningOrPaused = selectedCampaign?.status === 'running' || selectedCampaign?.status === 'paused'
@@ -301,15 +317,13 @@ function AnalyticsContent() {
 
     if (connectionsData && connectionsData.length > 0) {
       setConnections(connectionsData)
-      // Select first connected one, or first one if none connected
-      const connectedOne = connectionsData.find(c => c.status === 'connected') || connectionsData[0]
-      setSelectedConnection(connectedOne)
+      // Don't auto-select - let user choose device or "all devices"
     }
 
-    // Load campaigns with failed_count, started_at, paused_at and estimated_duration
+    // Load campaigns with connection details
     const { data: campaignsData, error } = await supabase
       .from('campaigns')
-      .select('id, name, status, sent_count, delivered_count, read_count, reply_count, failed_count, total_recipients, scheduled_at, started_at, paused_at, estimated_duration')
+      .select('id, name, status, sent_count, delivered_count, read_count, reply_count, failed_count, total_recipients, scheduled_at, started_at, paused_at, estimated_duration, connection_id, device_ids, multi_device, message_variations')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
 
@@ -340,34 +354,105 @@ function AnalyticsContent() {
       })
       setRecipients(sorted)
 
-      // Calculate messages sent today
-      const todayStart = new Date()
-      todayStart.setHours(0, 0, 0, 0)
-      const sentToday = sorted.filter(r =>
-        r.status === 'sent' && r.sent_at && new Date(r.sent_at) >= todayStart
-      ).length
-      setDailyMessageCount(sentToday)
+      // Calculate per-device message counts for this campaign
+      const deviceCounts: Record<string, number> = {}
+      sorted.forEach(msg => {
+        if (msg.status === 'sent' && msg.sender_phone) {
+          const phone = msg.sender_phone
+          deviceCounts[phone] = (deviceCounts[phone] || 0) + 1
+        }
+      })
+      setDeviceMessagesCount(deviceCounts)
     }
 
-    // Calculate daily limit for this campaign
-    const { data: campaign } = await supabase
-      .from('campaigns')
-      .select('multi_device, device_ids, message_variations')
-      .eq('id', campaignId)
-      .single()
-
-    if (campaign) {
-      const BASE_MESSAGES_PER_DAY_PER_DEVICE = 90
-      const VARIATION_BONUS = 10
-      const messageVariations: string[] = campaign.message_variations || []
-      const variationCount = messageVariations.length > 1 ? messageVariations.length : 0
-      const extraVariationBonus = variationCount > 1 ? (variationCount - 1) * VARIATION_BONUS : 0
-      const deviceCount = campaign.multi_device && campaign.device_ids ? campaign.device_ids.length : 1
-      const limit = (BASE_MESSAGES_PER_DAY_PER_DEVICE + extraVariationBonus) * deviceCount
-      setDailyLimit(limit)
+    // Calculate device-level daily usage (if a device is selected)
+    if (selectedConnection) {
+      await calculateDailyUsageForDevice(selectedConnection.id)
+    } else {
+      setDailyMessageCount(0)
+      setDailyLimit(0)
     }
 
     setRecipientsLoading(false)
+  }
+
+  // Calculate daily usage for a specific device
+  const calculateDailyUsageForDevice = async (deviceId: string) => {
+    const supabase = createClient()
+
+    // Get device info to check for variations
+    const { data: deviceData } = await supabase
+      .from('connections')
+      .select('id')
+      .eq('id', deviceId)
+      .single()
+
+    if (!deviceData) return
+
+    // Calculate daily limit per device
+    const BASE_MESSAGES_PER_DAY_PER_DEVICE = 90
+    const VARIATION_BONUS = 10
+
+    // Get all campaigns using this device to find highest variation bonus
+    const { data: deviceCampaigns } = await supabase
+      .from('campaigns')
+      .select('message_variations')
+      .or(`connection_id.eq.${deviceId},device_ids.cs.{${deviceId}}`)
+
+    let maxVariationBonus = 0
+    if (deviceCampaigns) {
+      deviceCampaigns.forEach(camp => {
+        const messageVariations: string[] = camp.message_variations || []
+        const variationCount = messageVariations.length > 1 ? messageVariations.length : 0
+        const bonus = variationCount > 1 ? (variationCount - 1) * VARIATION_BONUS : 0
+        maxVariationBonus = Math.max(maxVariationBonus, bonus)
+      })
+    }
+
+    const perDeviceLimit = BASE_MESSAGES_PER_DAY_PER_DEVICE + maxVariationBonus
+
+    // Count messages sent TODAY from this device across ALL campaigns
+    const todayStart = new Date()
+    todayStart.setHours(0, 0, 0, 0)
+
+    // Get all campaigns using this device
+    const { data: allCampaignsWithDevice } = await supabase
+      .from('campaigns')
+      .select('id')
+      .or(`connection_id.eq.${deviceId},device_ids.cs.{${deviceId}}`)
+
+    const campaignIdsUsingDevice = allCampaignsWithDevice?.map(c => c.id) || []
+
+    if (campaignIdsUsingDevice.length === 0) {
+      setDailyMessageCount(0)
+      setDailyLimit(perDeviceLimit)
+      return
+    }
+
+    // Count messages sent today from this device
+    // We need to match by sender_phone (which is the device's phone number)
+    const { data: deviceConnection } = await supabase
+      .from('connections')
+      .select('phone_number')
+      .eq('id', deviceId)
+      .single()
+
+    if (!deviceConnection?.phone_number) {
+      setDailyMessageCount(0)
+      setDailyLimit(perDeviceLimit)
+      return
+    }
+
+    const { count: sentTodayFromDevice } = await supabase
+      .from('campaign_messages')
+      .select('id', { count: 'exact', head: true })
+      .in('campaign_id', campaignIdsUsingDevice)
+      .eq('status', 'sent')
+      .eq('sender_phone', deviceConnection.phone_number)
+      .gte('sent_at', todayStart.toISOString())
+
+    setDailyMessageCount(sentTodayFromDevice || 0)
+    setDailyLimit(perDeviceLimit)
   }
 
   const handleDeleteCampaign = () => {
@@ -707,7 +792,17 @@ function AnalyticsContent() {
   const filteredCampaigns = campaigns.filter(c => {
     const matchesSearch = c.name.toLowerCase().includes(searchQuery.toLowerCase())
     const matchesStatus = filterStatus === 'all' || filterStatus === 'custom' || c.status === filterStatus
-    return matchesSearch && matchesStatus
+
+    // Filter by selected device (if any)
+    let matchesDevice = true
+    if (selectedConnection) {
+      const deviceId = selectedConnection.id
+      // Campaign matches if it uses this device (either as primary or in multi-device)
+      const campaignDevices = c.multi_device && c.device_ids ? c.device_ids : [c.connection_id]
+      matchesDevice = campaignDevices.includes(deviceId)
+    }
+
+    return matchesSearch && matchesStatus && matchesDevice
   })
 
   // Filter recipients by search
@@ -856,17 +951,49 @@ function AnalyticsContent() {
                   <p className={`text-[13px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
                     {selectedConnection
                       ? `אתה מחובר וצופה בנתונים עבור "${selectedConnection.display_name || selectedConnection.session_name}"`
-                      : 'לא נבחר חיבור'
+                      : 'בחר מכשיר לצפייה בקמפיינים'
                     }
                   </p>
                   <p className={`text-[14px] font-medium ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
-                    מספר וואטצאפ: {formatPhoneNumber(selectedConnection?.phone_number || null)}
+                    {selectedConnection
+                      ? `מספר וואטצאפ: ${formatPhoneNumber(selectedConnection.phone_number || null)}`
+                      : 'כל המכשירים'
+                    }
                   </p>
+                  {/* Daily limit info */}
+                  {selectedConnection && dailyLimit > 0 && (
+                    <p className={`text-[12px] mt-1 ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
+                      לימיט יומי: {dailyMessageCount}/{dailyLimit} הודעות
+                      {dailyMessageCount >= dailyLimit && (
+                        <span className="text-orange-500 mr-1">(הגעת ללימיט)</span>
+                      )}
+                    </p>
+                  )}
                 </div>
 
                 {/* Dropdown */}
                 {showConnectionDropdown && connections.length > 0 && (
                   <div className={`absolute top-full right-0 left-0 mt-2 ${darkMode ? 'bg-[#1a2d4a]' : 'bg-white'} rounded-[10px] shadow-lg border ${darkMode ? 'border-[#2a3f5f]' : 'border-gray-200'} z-10 overflow-hidden`}>
+                    {/* "All Devices" option */}
+                    <button
+                      onClick={() => {
+                        setSelectedConnection(null)
+                        setShowConnectionDropdown(false)
+                      }}
+                      className={`w-full px-4 py-3 text-right flex items-center justify-between hover:${darkMode ? 'bg-[#142241]' : 'bg-gray-50'} transition-colors ${
+                        !selectedConnection ? (darkMode ? 'bg-[#142241]' : 'bg-gray-50') : ''
+                      }`}
+                    >
+                      <div className="w-2 h-2 rounded-full bg-blue-500" />
+                      <div className="flex-1 mr-3">
+                        <p className={`text-[14px] font-medium ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+                          כל המכשירים
+                        </p>
+                        <p className={`text-[12px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
+                          הצג קמפיינים מכל המכשירים
+                        </p>
+                      </div>
+                    </button>
                     {connections.map((conn) => (
                       <button
                         key={conn.id}
@@ -979,6 +1106,11 @@ function AnalyticsContent() {
                       </div>
                       <div className="flex-1 text-right">
                         <h3 className={`text-[14px] font-medium ${darkMode ? 'text-white' : 'text-[#030733]'}`}>{campaign.name}</h3>
+                        {campaign.status === 'failed' && campaign.error_message && (
+                          <p className={`text-[11px] mt-1 ${darkMode ? 'text-red-400' : 'text-red-600'}`}>
+                            ⚠️ {campaign.error_message}
+                          </p>
+                        )}
                         <div className="flex items-center gap-1 mt-1 justify-end">
                           <span className={`text-[12px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
                             {(campaign.total_recipients || campaign.sent_count || 0).toLocaleString()} נמענים
@@ -1087,15 +1219,34 @@ function AnalyticsContent() {
                 )}
               </div>
 
-              {/* Average Response Time Card - Compact */}
+              {/* Device Messages Distribution Card - Shows how many messages each device sent */}
               <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[10px] px-4 py-3`}>
                 <h3 className={`text-[14px] font-semibold mb-1 text-right ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
-                  ממוצע מענה מהלקוח
+                  הודעות לפי מכשיר
                 </h3>
-                <p className={`text-[13px] text-right ${darkMode ? 'text-white' : 'text-[#030733]'}`}>זמן תגובה ממוצע</p>
-                <p className={`text-[12px] text-right ${darkMode ? 'text-gray-400' : 'text-[#454545]'}`}>
-                  {selectedCampaign ? '-' : '-'}
-                </p>
+                {selectedCampaign && Object.keys(deviceMessagesCount).length > 0 ? (
+                  <div className="space-y-1 mt-2">
+                    {Object.entries(deviceMessagesCount).map(([phone, count]) => {
+                      // Find the connection with this phone number
+                      const deviceConn = connections.find(c => c.phone_number === phone)
+                      const deviceName = deviceConn?.display_name || deviceConn?.session_name || formatPhoneForDisplay(phone)
+                      return (
+                        <div key={phone} className="flex items-center justify-between">
+                          <span className={`text-[11px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
+                            {count} הודעות
+                          </span>
+                          <span className={`text-[12px] ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+                            {deviceName}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <p className={`text-[12px] text-right ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
+                    {selectedCampaign ? 'אין הודעות שנשלחו עדיין' : 'בחר קמפיין'}
+                  </p>
+                )}
               </div>
             </div>
 

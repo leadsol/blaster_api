@@ -98,10 +98,28 @@ async function handler(
       return NextResponse.json({ success: true, skipped: true, reason: 'Campaign not running' })
     }
 
-    // Get a connected device
+    // Get a connected device with available daily capacity
     let deviceConnection = campaign.connection
+
+    // CRITICAL: For single device mode, check if it's busy in another campaign
+    if (!campaign.multi_device && deviceConnection) {
+      const { data: otherRunningCampaign } = await supabase
+        .from('campaigns')
+        .select('id, name')
+        .eq('status', 'running')
+        .neq('id', campaignId)
+        .or(`connection_id.eq.${deviceConnection.id},device_ids.cs.{${deviceConnection.id}}`)
+        .limit(1)
+        .single()
+
+      if (otherRunningCampaign) {
+        console.error(`❌ [SEND-MESSAGE] Device ${deviceConnection.session_name} is busy in campaign "${otherRunningCampaign.name}"`)
+        deviceConnection = null // Mark as unavailable
+      }
+    }
+
     if (campaign.multi_device && campaign.device_ids && campaign.device_ids.length > 0) {
-      // Get all device connections and pick a random connected one
+      // Get all device connections
       const { data: devices } = await supabase
         .from('connections')
         .select('id, session_name, status, phone_number, display_name')
@@ -109,8 +127,78 @@ async function handler(
         .eq('status', 'connected')
 
       if (devices && devices.length > 0) {
-        // Pick random device
-        deviceConnection = devices[Math.floor(Math.random() * devices.length)]
+        // Filter devices that haven't reached daily limit
+        const BASE_LIMIT = 90
+        const VARIATION_BONUS = 10
+        const todayStart = new Date()
+        todayStart.setHours(0, 0, 0, 0)
+
+        const availableDevices = []
+
+        for (const device of devices) {
+          if (!device.phone_number) continue
+
+          // CRITICAL: Check if device is busy in another running campaign
+          // This prevents race conditions where scheduled campaigns start while device is already busy
+          const { data: otherRunningCampaign } = await supabase
+            .from('campaigns')
+            .select('id, name')
+            .eq('status', 'running')
+            .neq('id', campaignId) // Exclude current campaign
+            .or(`connection_id.eq.${device.id},device_ids.cs.{${device.id}}`)
+            .limit(1)
+            .single()
+
+          if (otherRunningCampaign) {
+            console.log(`⚠️ [SEND-MESSAGE] Device ${device.session_name} is busy in campaign "${otherRunningCampaign.name}" - skipping`)
+            continue // Skip this device - it's busy
+          }
+
+          // Calculate limit for this device
+          const messageVariations: string[] = campaign.message_variations || []
+          const variationCount = messageVariations.length > 1 ? messageVariations.length : 0
+          const extraVariationBonus = variationCount > 1 ? (variationCount - 1) * VARIATION_BONUS : 0
+          const deviceLimit = BASE_LIMIT + extraVariationBonus
+
+          // Get all campaigns using this device
+          const { data: deviceCampaigns } = await supabase
+            .from('campaigns')
+            .select('id')
+            .or(`connection_id.eq.${device.id},device_ids.cs.{${device.id}}`)
+
+          const campaignIds = deviceCampaigns?.map(c => c.id) || []
+
+          if (campaignIds.length === 0) {
+            availableDevices.push(device)
+            continue
+          }
+
+          // Count messages sent today from this device
+          const { count: sentToday } = await supabase
+            .from('campaign_messages')
+            .select('id', { count: 'exact', head: true })
+            .in('campaign_id', campaignIds)
+            .eq('status', 'sent')
+            .eq('sender_phone', device.phone_number)
+            .gte('sent_at', todayStart.toISOString())
+
+          const messagesSentToday = sentToday || 0
+          console.log(`[SEND-MESSAGE] Device ${device.session_name} (${device.phone_number}): sent ${messagesSentToday}/${deviceLimit} today`)
+
+          // Only include devices that haven't reached their limit
+          if (messagesSentToday < deviceLimit) {
+            availableDevices.push(device)
+          }
+        }
+
+        if (availableDevices.length > 0) {
+          // Pick random device from available ones
+          deviceConnection = availableDevices[Math.floor(Math.random() * availableDevices.length)]
+          console.log(`[SEND-MESSAGE] Selected device: ${deviceConnection.session_name} (${availableDevices.length} available)`)
+        } else {
+          console.error('[SEND-MESSAGE] All devices reached daily limit')
+          deviceConnection = null
+        }
       }
     }
 
