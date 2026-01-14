@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { normalizePhone } from '@/lib/phone-utils'
 
 // GET - Get single campaign with messages
 export async function GET(
@@ -402,7 +403,7 @@ export async function PUT(
 
       return {
         campaign_id: campaignId,
-        phone: recipient.phone,
+        phone: normalizePhone(recipient.phone),
         name: recipient.name || null,
         message_content: messageContent.trim(),
         variables: recipient.variables || {},

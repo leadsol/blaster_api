@@ -29,6 +29,7 @@ import { useTheme } from '@/contexts/ThemeContext'
 import { ConfirmModal } from '@/components/modals'
 import { format } from 'date-fns'
 import { he } from 'date-fns/locale'
+import { normalizePhone, formatPhoneForDisplay } from '@/lib/phone-utils'
 
 interface Contact {
   id: string
@@ -174,7 +175,7 @@ export default function ContactsPage() {
 
     const { data, error } = await supabase.from('contacts').insert({
       user_id: user.id,
-      phone: newContact.phone,
+      phone: normalizePhone(newContact.phone),
       first_name: newContact.name?.split(' ')[0] || null,
       last_name: newContact.name?.split(' ').slice(1).join(' ') || null,
     }).select().single()
@@ -434,7 +435,7 @@ export default function ContactsPage() {
                       </div>
                       <span className={`${darkMode ? 'text-white' : 'text-[#030733]'} text-[13px] sm:text-[15px] font-medium truncate`}>{contact.name || '-'}</span>
                     </div>
-                    <div className={`w-[120px] lg:w-[150px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'} text-[12px] sm:text-[14px]`} dir="ltr">{contact.phone}</div>
+                    <div className={`w-[120px] lg:w-[150px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'} text-[12px] sm:text-[14px]`} dir="ltr">{formatPhoneForDisplay(contact.phone)}</div>
                     <div className={`w-[140px] lg:w-[180px] hidden xl:block ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'} text-[12px] sm:text-[14px] truncate`} dir="ltr">{contact.email || '-'}</div>
                     <div className="w-[100px] lg:w-[120px] hidden xl:flex flex-wrap gap-1">
                       {contact.labels?.map((label, index) => (
@@ -507,7 +508,7 @@ export default function ContactsPage() {
                              contact.status === 'blocked' ? 'חסום' : '-'}
                           </span>
                         </div>
-                        <div className={`text-[10px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'} mt-0.5`} dir="ltr">{contact.phone}</div>
+                        <div className={`text-[10px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'} mt-0.5`} dir="ltr">{formatPhoneForDisplay(contact.phone)}</div>
                         {contact.email && (
                           <div className={`text-[10px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'} truncate`} dir="ltr">{contact.email}</div>
                         )}

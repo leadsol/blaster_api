@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useTheme } from '@/contexts/ThemeContext'
+import { formatPhoneForDisplay } from '@/lib/phone-utils'
 import {
   Search,
   Send,
@@ -254,7 +255,7 @@ export default function ChatPage() {
                     <h3 className={`font-medium text-[12px] lg:text-[14px] truncate ${darkMode ? 'text-white' : 'text-[#030733]'}`}>{contact.name}</h3>
                     <span className={`text-[10px] lg:text-[12px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>{contact.lastMessageTime}</span>
                   </div>
-                  <p className={`text-[10px] lg:text-[12px] truncate mt-0.5 lg:mt-1 ${darkMode ? 'text-gray-400' : 'text-[#505050]'}`}>{contact.lastMessage || contact.phone}</p>
+                  <p className={`text-[10px] lg:text-[12px] truncate mt-0.5 lg:mt-1 ${darkMode ? 'text-gray-400' : 'text-[#505050]'}`}>{contact.lastMessage || formatPhoneForDisplay(contact.phone)}</p>
                 </div>
                 {contact.unreadCount > 0 && (
                   <span className="bg-[#0043E0] text-white text-[9px] lg:text-[10px] rounded-full min-w-[16px] lg:min-w-[18px] h-[16px] lg:h-[18px] flex items-center justify-center px-1">
@@ -287,7 +288,7 @@ export default function ChatPage() {
               />
               <div className="flex flex-col">
                 <span className="text-white text-[12px] lg:text-[14px] font-medium truncate max-w-[120px] sm:max-w-none">{selectedContact.name}</span>
-                <span className="text-white/70 text-[10px] lg:text-[12px] font-normal hidden sm:block" dir="ltr">{selectedContact.phone}</span>
+                <span className="text-white/70 text-[10px] lg:text-[12px] font-normal hidden sm:block" dir="ltr">{formatPhoneForDisplay(selectedContact.phone)}</span>
               </div>
             </div>
             <div className="flex items-center gap-1 lg:gap-2">

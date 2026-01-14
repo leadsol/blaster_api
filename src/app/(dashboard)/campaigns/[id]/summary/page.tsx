@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Search, Trash2, Plus, ChevronDown, ChevronUp, ArrowRight, ArrowLeft, Pencil, X, Check } from 'lucide-react'
 import { useTheme } from '@/contexts/ThemeContext'
 import { ConfirmModal, AlertModal } from '@/components/modals'
+import { normalizePhone, formatPhoneForDisplay } from '@/lib/phone-utils'
 
 interface CampaignMessage {
   id: string
@@ -312,14 +313,8 @@ export default function CampaignSummaryPage() {
   const saveEdit = async () => {
     if (!editingId || !editData) return
 
-    // Normalize phone number: convert 05X to 972X
-    let normalizedPhone = editData.phone.trim()
-    if (normalizedPhone.startsWith('05')) {
-      normalizedPhone = '972' + normalizedPhone.substring(1)
-    } else if (normalizedPhone.startsWith('0')) {
-      // Handle other Israeli formats like 02, 03, 04, etc.
-      normalizedPhone = '972' + normalizedPhone.substring(1)
-    }
+    // Normalize phone number before saving
+    const normalizedPhone = normalizePhone(editData.phone)
 
     const supabase = createClient()
     const { error } = await supabase
@@ -1030,7 +1025,7 @@ export default function CampaignSummaryPage() {
                               }`}
                             />
                           ) : (
-                            message.phone
+                            formatPhoneForDisplay(message.phone)
                           )}
                         </td>
                         {/* Dynamic columns */}

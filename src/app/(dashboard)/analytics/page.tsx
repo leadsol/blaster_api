@@ -11,6 +11,7 @@ import {
 import { useRouter } from 'next/navigation'
 import { useTheme } from '@/contexts/ThemeContext'
 import { ConfirmModal, AlertModal } from '@/components/modals'
+import { formatPhoneForDisplay } from '@/lib/phone-utils'
 
 interface CampaignStats {
   id: string
@@ -757,15 +758,10 @@ function AnalyticsContent() {
     }
   }, [recipients])
 
-  // Format phone number for display
+  // Format phone number for display (using utility)
   const formatPhoneNumber = (phone: string | null) => {
     if (!phone) return 'לא זמין'
-    // Format as 052-XXXXXXX
-    if (phone.startsWith('972')) {
-      const local = phone.slice(3)
-      return `0${local.slice(0, 2)}-${local.slice(2)}`
-    }
-    return phone
+    return formatPhoneForDisplay(phone)
   }
 
   // Format duration in seconds to readable format (short version for campaign list)
@@ -1115,11 +1111,11 @@ function AnalyticsContent() {
                             </div>
                             <div className="text-right">
                               <span className={`text-[13px] ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
-                                {recipient.name || recipient.phone}
+                                {recipient.name || formatPhoneForDisplay(recipient.phone)}
                               </span>
                               {recipient.name && (
                                 <span className={`text-[11px] mr-2 ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
-                                  {recipient.phone}
+                                  {formatPhoneForDisplay(recipient.phone)}
                                 </span>
                               )}
                             </div>
@@ -1394,7 +1390,7 @@ function AnalyticsContent() {
                   </div>
                 )}
                 <div className="flex items-center justify-between mb-2">
-                  <span className={`text-[14px] ${darkMode ? 'text-white' : 'text-[#030733]'}`}>{selectedRecipient.phone}</span>
+                  <span className={`text-[14px] ${darkMode ? 'text-white' : 'text-[#030733]'}`}>{formatPhoneForDisplay(selectedRecipient.phone)}</span>
                   <span className={`text-[14px] font-medium ${darkMode ? 'text-white' : 'text-[#030733]'}`}>טלפון</span>
                 </div>
                 {selectedRecipient.sent_at && (

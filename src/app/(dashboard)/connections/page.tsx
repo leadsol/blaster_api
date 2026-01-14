@@ -29,6 +29,7 @@ import { format } from 'date-fns'
 import { he } from 'date-fns/locale'
 import { useTheme } from '@/contexts/ThemeContext'
 import { ConfirmModal, AlertModal } from '@/components/modals'
+import { formatPhoneForDisplay } from '@/lib/phone-utils'
 
 interface Connection {
   id: string
@@ -802,7 +803,7 @@ export default function ConnectionsPage() {
                                 {connection.display_name || 'חיבור WhatsApp'}
                               </p>
                               {connection.phone_number && (
-                                <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} dir="ltr">{connection.phone_number}</p>
+                                <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} dir="ltr">{formatPhoneForDisplay(connection.phone_number)}</p>
                               )}
                             </div>
                           </div>
@@ -927,7 +928,7 @@ export default function ConnectionsPage() {
                               {connection.display_name || 'חיבור WhatsApp'}
                             </p>
                             {connection.phone_number && (
-                              <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} dir="ltr">{connection.phone_number}</p>
+                              <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} dir="ltr">{formatPhoneForDisplay(connection.phone_number)}</p>
                             )}
                           </div>
                         </div>
@@ -1533,7 +1534,7 @@ export default function ConnectionsPage() {
                     </p>
                     {connectionToEdit.phone_number && (
                       <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} dir="ltr">
-                        {connectionToEdit.phone_number}
+                        {formatPhoneForDisplay(connectionToEdit.phone_number)}
                       </p>
                     )}
                   </div>

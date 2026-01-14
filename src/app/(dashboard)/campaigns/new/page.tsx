@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { normalizePhone, formatPhoneForDisplay } from '@/lib/phone-utils'
 import { FFmpeg } from '@ffmpeg/ffmpeg'
 import { fetchFile, toBlobURL } from '@ffmpeg/util'
 import {
@@ -887,23 +888,7 @@ function NewCampaignContent() {
     }
   }
 
-  // Convert phone number to international format (972)
-  const formatPhoneNumber = (phone: string): string => {
-    // Remove all non-digit characters
-    let cleaned = phone.replace(/\D/g, '')
-
-    // If starts with 0, replace with 972
-    if (cleaned.startsWith('0')) {
-      cleaned = '972' + cleaned.slice(1)
-    }
-
-    // If doesn't start with 972, add it (for numbers without prefix)
-    if (!cleaned.startsWith('972') && cleaned.length === 9) {
-      cleaned = '972' + cleaned
-    }
-
-    return cleaned
-  }
+  // Note: Phone normalization now handled by normalizePhone() utility function
 
   const handleSubmit = async () => {
     // Validation
@@ -1112,11 +1097,11 @@ function NewCampaignContent() {
         multi_device: hasMultiDevice,
         device_ids: hasMultiDevice ? selectedDevices : [selectedConnection],
         recipients: recipients.map(r => ({
-          phone: r.phone,
+          phone: normalizePhone(r.phone),
           name: r.name,
           variables: r.variables || {}
         })),
-        exclusion_list: exclusionList.map(e => e.phone),
+        exclusion_list: exclusionList.map(e => normalizePhone(e.phone)),
         // Message variations
         has_message_variations: hasMessageVariations,
         message_variations: hasMessageVariations ? messageVariations : [],
@@ -1280,11 +1265,11 @@ function NewCampaignContent() {
         multi_device: hasMultiDevice,
         device_ids: hasMultiDevice ? selectedDevices : selectedConnection ? [selectedConnection] : [],
         recipients: recipients.map(r => ({
-          phone: r.phone,
+          phone: normalizePhone(r.phone),
           name: r.name,
           variables: r.variables || {}
         })),
-        exclusion_list: exclusionList.map(e => e.phone),
+        exclusion_list: exclusionList.map(e => normalizePhone(e.phone)),
         has_message_variations: hasMessageVariations,
         message_variations: hasMessageVariations ? messageVariations : [],
         variation_count: hasMessageVariations ? variationCount : 0,
@@ -4229,10 +4214,10 @@ function NewCampaignContent() {
                         {/* Phone */}
                         <div
                           className={`flex-1 min-w-0 px-[8px] text-[13px] truncate cursor-default ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}
-                          onMouseEnter={(e) => showCellTooltip(e, recipient.phone)}
+                          onMouseEnter={(e) => showCellTooltip(e, formatPhoneForDisplay(recipient.phone))}
                           onMouseLeave={hideCellTooltip}
                         >
-                          {recipient.phone}
+                          {formatPhoneForDisplay(recipient.phone)}
                         </div>
 
                         {/* Dynamic columns values (excluding שם and טלפון which are already shown) */}

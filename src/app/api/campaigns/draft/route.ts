@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { normalizePhone } from '@/lib/phone-utils'
 
 // POST - Save campaign as draft
 export async function POST(request: NextRequest) {
@@ -207,7 +208,7 @@ export async function POST(request: NextRequest) {
 
           return {
             campaign_id: campaign.id,
-            phone: recipient.phone,
+            phone: normalizePhone(recipient.phone),
             name: recipient.name || null,
             message_content: messageContent.trim(),
             variables: recipient.variables || {},
