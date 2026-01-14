@@ -566,20 +566,16 @@ function AnalyticsContent() {
       })
 
       if (response.ok) {
-        // Calculate new started_at based on elapsed time before pause
-        // This makes the countdown continue from where it left off
-        let newStartedAt = selectedCampaign.started_at
-        if (selectedCampaign.paused_at && selectedCampaign.started_at) {
-          const originalStartTime = new Date(selectedCampaign.started_at).getTime()
-          const pausedTime = new Date(selectedCampaign.paused_at).getTime()
-          const elapsedBeforePause = pausedTime - originalStartTime
-          newStartedAt = new Date(Date.now() - elapsedBeforePause).toISOString()
-        }
+        // Get updated campaign data from server to ensure accurate started_at
+        const updatedResponse = await fetch(`/api/campaigns/${selectedCampaign.id}`)
+        if (updatedResponse.ok) {
+          const { campaign: updatedCampaign } = await updatedResponse.json()
 
-        setCampaigns(prev => prev.map(c =>
-          c.id === selectedCampaign.id ? { ...c, status: 'running', paused_at: undefined, started_at: newStartedAt } : c
-        ))
-        setSelectedCampaign({ ...selectedCampaign, status: 'running', paused_at: undefined, started_at: newStartedAt })
+          setCampaigns(prev => prev.map(c =>
+            c.id === selectedCampaign.id ? updatedCampaign : c
+          ))
+          setSelectedCampaign(updatedCampaign)
+        }
         setAlertModal({
           isOpen: true,
           title: 'הקמפיין ממשיך לרוץ',
