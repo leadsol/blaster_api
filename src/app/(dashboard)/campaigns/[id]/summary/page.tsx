@@ -330,16 +330,8 @@ export default function CampaignSummaryPage() {
 
     const supabase = createClient()
 
-    // Calculate delay for the new message
-    const lastMessage = messages.length > 0
-      ? messages.reduce((max, msg) =>
-          (msg.scheduled_delay_seconds || 0) > (max.scheduled_delay_seconds || 0) ? msg : max
-        )
-      : null
-
-    const baseDelay = lastMessage?.scheduled_delay_seconds || 0
+    // Calculate delay for the new message - it should be FIRST, so use minimal delay
     const randomDelay = Math.floor(Math.random() * (campaign.delay_max - campaign.delay_min + 1)) + campaign.delay_min
-    const newDelay = baseDelay + randomDelay
 
     // Create new empty message
     const newMessage = {
@@ -349,7 +341,7 @@ export default function CampaignSummaryPage() {
       message_content: campaign.message_template,
       variables: {},
       status: 'pending',
-      scheduled_delay_seconds: newDelay
+      scheduled_delay_seconds: randomDelay // First message gets the base delay
     }
 
     const { data, error } = await supabase
@@ -374,21 +366,14 @@ export default function CampaignSummaryPage() {
       .update({ total_recipients: messages.length + 1 })
       .eq('id', campaignId)
 
-    // Add to local state and start editing immediately
-    setMessages([...messages, data])
+    // Add to START of local state and start editing immediately
+    setMessages([data, ...messages])
     setEditingId(data.id)
     setEditData({
       name: '',
       phone: '',
       message_content: data.message_content,
       variables: {}
-    })
-
-    setAlertModal({
-      isOpen: true,
-      title: 'נמען חדש נוסף',
-      message: 'מלא את הפרטים ולחץ על ✓ לשמירה',
-      type: 'success'
     })
   }
 
