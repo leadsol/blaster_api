@@ -450,7 +450,7 @@ export default function CampaignSummaryPage() {
     ]
 
     let cumulativeDelaySeconds = 0
-    const updates = []
+    const updates: { id: string; scheduled_delay_seconds: number }[] = []
 
     console.log(`🔄 Recalculating delays for ${currentMessages.length} messages`)
 
