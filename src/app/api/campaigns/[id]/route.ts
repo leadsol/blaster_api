@@ -89,18 +89,41 @@ export async function PATCH(
         newStatus = 'running'
         message = 'Campaign resumed'
 
-        // Calculate new started_at based on how much time was remaining when paused
-        // This allows the countdown to continue correctly from where it left off
-        if (campaign.paused_at && campaign.started_at && campaign.estimated_duration) {
-          const originalStartTime = new Date(campaign.started_at).getTime()
-          const pausedTime = new Date(campaign.paused_at).getTime()
-          const elapsedBeforePause = pausedTime - originalStartTime // ms that passed before pause
-          const now = Date.now()
-          // New started_at = now - elapsedBeforePause
-          // This makes the countdown think the campaign started "elapsedBeforePause" ms ago
-          updateData.started_at = new Date(now - elapsedBeforePause).toISOString()
-          updateData.paused_at = null // Clear paused_at
+        // Get the highest scheduled_delay_seconds from pending messages
+        // This represents the remaining time needed to complete the campaign
+        const { data: pendingMessages } = await supabase
+          .from('campaign_messages')
+          .select('scheduled_delay_seconds')
+          .eq('campaign_id', campaignId)
+          .eq('status', 'pending')
+          .order('scheduled_delay_seconds', { ascending: false })
+          .limit(1)
+
+        // Update estimated_duration to reflect only remaining messages
+        if (pendingMessages && pendingMessages.length > 0) {
+          const lastPendingDelay = pendingMessages[0].scheduled_delay_seconds || 0
+
+          // Get the highest scheduled_delay_seconds from sent messages to know where we left off
+          const { data: sentMessages } = await supabase
+            .from('campaign_messages')
+            .select('scheduled_delay_seconds')
+            .eq('campaign_id', campaignId)
+            .in('status', ['sent', 'failed'])
+            .order('scheduled_delay_seconds', { ascending: false })
+            .limit(1)
+
+          const lastSentDelay = sentMessages && sentMessages.length > 0
+            ? (sentMessages[0].scheduled_delay_seconds || 0)
+            : 0
+
+          // Remaining duration = last pending message delay - last sent message delay
+          const remainingDuration = lastPendingDelay - lastSentDelay
+          updateData.estimated_duration = remainingDuration
         }
+
+        // Set started_at to now since we're calculating remaining duration
+        updateData.started_at = new Date().toISOString()
+        updateData.paused_at = null // Clear paused_at
 
         // Trigger processing again - use stable app URL
         const resumeAppUrl = process.env.NEXT_PUBLIC_APP_URL && process.env.NEXT_PUBLIC_APP_URL !== 'http://localhost:3000'
