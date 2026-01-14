@@ -212,6 +212,9 @@ export async function POST(request: NextRequest) {
     ]
 
     let cumulativeDelaySeconds = 0
+    console.log(`🔵 Creating messages for ${filteredRecipients.length} recipients`)
+    console.log(`🔵 delay_min: ${delay_min}, delay_max: ${delay_max}`)
+
     const campaignMessages = filteredRecipients.map((recipient: { phone: string; name?: string; variables?: Record<string, string> }, index: number) => {
       // Replace variables in message template
       let messageContent = message_template
@@ -233,10 +236,15 @@ export async function POST(request: NextRequest) {
       // Don't add pause after the last message of a campaign
       const messageNumber = index + 1
       const isLastMessage = messageNumber === filteredRecipients.length
+
+      console.log(`🔵 Message ${messageNumber}/${filteredRecipients.length}: delay=${messageDelay}s, cumulative=${cumulativeDelaySeconds}s, isLast=${isLastMessage}`)
+
       if (!isLastMessage && messageNumber % MESSAGES_PER_BULK === 0) {
         const bulkIndex = Math.floor(messageNumber / MESSAGES_PER_BULK) - 1
         const pauseIndex = Math.min(bulkIndex, BULK_PAUSE_SECONDS.length - 1)
-        cumulativeDelaySeconds += BULK_PAUSE_SECONDS[pauseIndex]
+        const pauseAmount = BULK_PAUSE_SECONDS[pauseIndex]
+        console.log(`⏸️  Adding bulk pause after message ${messageNumber}: ${pauseAmount}s (${pauseAmount/60} minutes)`)
+        cumulativeDelaySeconds += pauseAmount
       }
 
       return {
@@ -249,6 +257,8 @@ export async function POST(request: NextRequest) {
         scheduled_delay_seconds: cumulativeDelaySeconds,
       }
     })
+
+    console.log(`✅ Total estimated duration: ${cumulativeDelaySeconds}s (${(cumulativeDelaySeconds/60).toFixed(2)} minutes)`)
 
     const { error: messagesError } = await supabase
       .from('campaign_messages')
