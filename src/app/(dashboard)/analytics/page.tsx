@@ -1574,14 +1574,14 @@ function AnalyticsContent() {
               {/* Stats Column - RESPONSIVE */}
               <div className="lg:col-span-3 space-y-2 sm:space-y-3 md:space-y-4 h-full flex flex-col">
                 {/* Stats Overview - Donut Chart + Percentages - RESPONSIVE */}
-                <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[10px] sm:rounded-[12px] md:rounded-[15px] p-5 sm:p-6 md:p-7 lg:p-8 flex-1`}>
+                <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[10px] sm:rounded-[12px] md:rounded-[15px] p-2.5 sm:p-3 md:p-3.5 lg:p-4 flex-1`}>
                   <h3 className={`text-[12px] sm:text-[13px] md:text-[14px] lg:text-[15px] xl:text-[16px] 2xl:text-[18px] font-semibold mb-2 sm:mb-3 md:mb-4 text-right ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
                     סקירת שליחת הודעות
                   </h3>
 
                   {/* Large Donut Chart - Centered - RESPONSIVE */}
-                  <div className="flex justify-center mb-2 sm:mb-3 md:mb-4">
-                    <div className="relative w-[120px] h-[120px] sm:w-[140px] sm:h-[140px] md:w-[160px] md:h-[160px] lg:w-[180px] lg:h-[180px] xl:w-[200px] xl:h-[200px] 2xl:w-[220px] 2xl:h-[220px]">
+                  <div className="flex justify-center mb-1 sm:mb-1.5 md:mb-2">
+                    <div className="relative w-[60px] h-[60px] sm:w-[70px] sm:h-[70px] md:w-[80px] md:h-[80px] lg:w-[90px] lg:h-[90px] xl:w-[100px] xl:h-[100px] 2xl:w-[110px] 2xl:h-[110px]">
                       <svg viewBox="0 0 100 100" className="w-full h-full transform -rotate-90">
                         <circle cx="50" cy="50" r="42" fill="none" stroke={darkMode ? '#1a2d4a' : '#E5E7EB'} strokeWidth="8" />
                         {successRate > 0 && (
@@ -1610,10 +1610,10 @@ function AnalyticsContent() {
                         )}
                       </svg>
                       <div className="absolute inset-0 flex flex-col items-center justify-center">
-                        <p className={`text-[20px] sm:text-[24px] md:text-[28px] lg:text-[32px] xl:text-[36px] 2xl:text-[40px] font-bold ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+                        <p className={`text-[10px] sm:text-[12px] md:text-[14px] lg:text-[16px] xl:text-[18px] 2xl:text-[20px] font-bold ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
                           {campaignStats.total}
                         </p>
-                        <p className={`text-[9px] sm:text-[10px] md:text-[11px] lg:text-[12px] xl:text-[13px] 2xl:text-[14px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>סה״כ הודעות</p>
+                        <p className={`text-[5px] sm:text-[5px] md:text-[6px] lg:text-[6px] xl:text-[7px] 2xl:text-[7px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>סה״כ הודעות</p>
                       </div>
                     </div>
                   </div>
@@ -1647,7 +1647,7 @@ function AnalyticsContent() {
                 </div>
 
                 {/* Responses Received - RESPONSIVE */}
-                <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[8px] sm:rounded-[10px] p-4 sm:p-5 md:p-6 lg:p-7 min-h-[140px] sm:min-h-[160px] md:min-h-[180px]`}>
+                <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[8px] sm:rounded-[10px] p-2 sm:p-2.5 md:p-3 lg:p-3.5 min-h-[70px] sm:min-h-[80px] md:min-h-[90px]`}>
                   <div className="flex items-center justify-between mb-2 sm:mb-2.5 md:mb-3">
                     <MessageCircle size={14} className={`${darkMode ? 'text-white' : 'text-[#030733]'} flex-shrink-0`} />
                     <h3 className={`text-[11px] sm:text-[12px] md:text-[13px] lg:text-[14px] xl:text-[15px] font-semibold ${darkMode ? 'text-white' : 'text-[#030733]'}`}>תגובות שהתקבלו</h3>
@@ -1669,7 +1669,7 @@ function AnalyticsContent() {
                 </div>
 
                 {/* Messages Viewed - RESPONSIVE */}
-                <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[8px] sm:rounded-[10px] p-4 sm:p-5 md:p-6 lg:p-7 min-h-[140px] sm:min-h-[160px] md:min-h-[180px]`}>
+                <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[8px] sm:rounded-[10px] p-2 sm:p-2.5 md:p-3 lg:p-3.5 min-h-[70px] sm:min-h-[80px] md:min-h-[90px]`}>
                   <div className="flex items-center justify-between mb-2 sm:mb-2.5 md:mb-3">
                     <CheckCheck size={14} className={`${darkMode ? 'text-white' : 'text-[#030733]'} flex-shrink-0`} />
                     <h3 className={`text-[11px] sm:text-[12px] md:text-[13px] lg:text-[14px] xl:text-[15px] font-semibold ${darkMode ? 'text-white' : 'text-[#030733]'}`}>הודעות שנצפו</h3>
