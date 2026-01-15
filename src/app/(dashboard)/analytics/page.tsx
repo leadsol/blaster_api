@@ -1460,7 +1460,7 @@ function AnalyticsContent() {
             </div>
 
             {/* BOTTOM ROW: Recipients Panel + Stats Column - RESPONSIVE */}
-            <div className="grid grid-cols-1 lg:grid-cols-7 gap-2 sm:gap-3 md:gap-4 flex-1 min-h-[600px] sm:min-h-[650px] md:min-h-[700px] lg:min-h-[750px]">
+            <div className="grid grid-cols-1 lg:grid-cols-7 gap-2 sm:gap-3 md:gap-4 flex-1 min-h-[800px] sm:min-h-[850px] md:min-h-[900px] lg:min-h-[950px]">
               {/* Recipients Panel - RESPONSIVE */}
               <div className={`lg:col-span-4 ${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[10px] sm:rounded-[12px] md:rounded-[15px] p-5 sm:p-6 md:p-7 lg:p-8 flex flex-col h-full`}>
                 <h3 className={`text-[13px] sm:text-[14px] md:text-[16px] lg:text-[17px] xl:text-[18px] 2xl:text-[20px] font-semibold mb-2 sm:mb-3 md:mb-4 text-right ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
