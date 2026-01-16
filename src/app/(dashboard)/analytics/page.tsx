@@ -1460,7 +1460,7 @@ function AnalyticsContent() {
             </div>
 
             {/* BOTTOM ROW: Recipients Panel + Stats Column - RESPONSIVE */}
-            <div className="grid grid-cols-1 lg:grid-cols-7 gap-2 sm:gap-3 md:gap-4 flex-1">
+            <div className="grid grid-cols-1 lg:grid-cols-7 gap-2 sm:gap-3 md:gap-4 flex-1 overflow-y-auto">
               {/* Recipients Panel - RESPONSIVE */}
               <div className={`lg:col-span-4 ${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[10px] sm:rounded-[12px] md:rounded-[15px] p-3 sm:p-4 md:p-5 flex flex-col`}>
                 <h3 className={`text-[13px] sm:text-[14px] md:text-[16px] lg:text-[17px] xl:text-[18px] 2xl:text-[20px] font-semibold mb-2 sm:mb-3 md:mb-4 text-right ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
@@ -1646,18 +1646,18 @@ function AnalyticsContent() {
                   </div>
                 </div>
 
-                {/* Responses Received - RESPONSIVE */}
-                <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[8px] sm:rounded-[10px] p-2 sm:p-3 md:p-4`}>
-                  <div className="flex items-center justify-between mb-2 sm:mb-2.5 md:mb-3">
-                    <MessageCircle size={14} className={`${darkMode ? 'text-white' : 'text-[#030733]'} flex-shrink-0`} />
-                    <h3 className={`text-[11px] sm:text-[12px] md:text-[13px] lg:text-[14px] xl:text-[15px] font-semibold ${darkMode ? 'text-white' : 'text-[#030733]'}`}>תגובות שהתקבלו</h3>
+                {/* Responses Received - COMPACT */}
+                <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[6px] sm:rounded-[8px] p-1.5 sm:p-2`}>
+                  <div className="flex items-center justify-between mb-1">
+                    <MessageCircle size={12} className={`${darkMode ? 'text-white' : 'text-[#030733]'} flex-shrink-0`} />
+                    <h3 className={`text-[10px] sm:text-[11px] font-semibold ${darkMode ? 'text-white' : 'text-[#030733]'}`}>תגובות שהתקבלו</h3>
                   </div>
-                  <div className="mb-2">
-                    <div className={`${darkMode ? 'bg-[#030733]/40' : 'bg-[rgba(3,7,51,0.24)]'} h-[6px] rounded-[50px] overflow-hidden`}>
+                  <div className="mb-1">
+                    <div className={`${darkMode ? 'bg-[#030733]/40' : 'bg-[rgba(3,7,51,0.24)]'} h-[4px] rounded-[50px] overflow-hidden`}>
                       <div className="bg-[#030733] h-full rounded-[50px] transition-all duration-300" style={{ width: `${replyRate}%` }} />
                     </div>
                   </div>
-                  <div className="flex items-center justify-between text-[9px] sm:text-[10px] md:text-[11px] lg:text-[12px]">
+                  <div className="flex items-center justify-between text-[8px] sm:text-[9px]">
                     <span className={`${darkMode ? 'text-gray-400' : 'text-[#454545]'}`}>
                       <span className={`font-medium ${darkMode ? 'text-white' : 'text-[#030733]'}`}>{campaignStats.sent}</span> סה״כ
                     </span>
@@ -1668,18 +1668,18 @@ function AnalyticsContent() {
                   </div>
                 </div>
 
-                {/* Messages Viewed - RESPONSIVE */}
-                <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[8px] sm:rounded-[10px] p-2 sm:p-3 md:p-4`}>
-                  <div className="flex items-center justify-between mb-2 sm:mb-2.5 md:mb-3">
-                    <CheckCheck size={14} className={`${darkMode ? 'text-white' : 'text-[#030733]'} flex-shrink-0`} />
-                    <h3 className={`text-[11px] sm:text-[12px] md:text-[13px] lg:text-[14px] xl:text-[15px] font-semibold ${darkMode ? 'text-white' : 'text-[#030733]'}`}>הודעות שנצפו</h3>
+                {/* Messages Viewed - COMPACT */}
+                <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[6px] sm:rounded-[8px] p-1.5 sm:p-2`}>
+                  <div className="flex items-center justify-between mb-1">
+                    <CheckCheck size={12} className={`${darkMode ? 'text-white' : 'text-[#030733]'} flex-shrink-0`} />
+                    <h3 className={`text-[10px] sm:text-[11px] font-semibold ${darkMode ? 'text-white' : 'text-[#030733]'}`}>הודעות שנצפו</h3>
                   </div>
-                  <div className="mb-2">
-                    <div className={`${darkMode ? 'bg-[#030733]/40' : 'bg-[rgba(3,7,51,0.24)]'} h-[6px] rounded-[50px] overflow-hidden`}>
+                  <div className="mb-1">
+                    <div className={`${darkMode ? 'bg-[#030733]/40' : 'bg-[rgba(3,7,51,0.24)]'} h-[4px] rounded-[50px] overflow-hidden`}>
                       <div className="bg-[#030733] h-full rounded-[50px] transition-all duration-300" style={{ width: `${readRate}%` }} />
                     </div>
                   </div>
-                  <div className="flex items-center justify-between text-[9px] sm:text-[10px] md:text-[11px] lg:text-[12px]">
+                  <div className="flex items-center justify-between text-[8px] sm:text-[9px]">
                     <span className={`${darkMode ? 'text-gray-400' : 'text-[#454545]'}`}>
                       <span className={`font-medium ${darkMode ? 'text-white' : 'text-[#030733]'}`}>{campaignStats.sent}</span> סה״כ
                     </span>
