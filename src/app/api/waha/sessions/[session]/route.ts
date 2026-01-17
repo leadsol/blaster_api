@@ -43,6 +43,60 @@ export async function GET(
   }
 }
 
+// PUT - Update session metadata
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ session: string }> }
+) {
+  const { session } = await params
+
+  try {
+    // Verify user is authenticated
+    const supabase = await createClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    if (!WAHA_API_KEY) {
+      console.error('WAHA_API_KEY is not configured')
+      return NextResponse.json({ error: 'Server configuration error' }, { status: 500 })
+    }
+
+    const body = await request.json()
+    const { displayName } = body
+
+    // Update session with new metadata
+    const response = await fetch(`${WAHA_API_URL}/api/sessions/${session}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Api-Key': WAHA_API_KEY,
+      },
+      body: JSON.stringify({
+        config: {
+          metadata: {
+            displayName: displayName,
+            updatedAt: new Date().toISOString(),
+          },
+        },
+      }),
+    })
+
+    if (!response.ok) {
+      console.error(`WAHA API error updating session: ${response.status}`)
+      return NextResponse.json({ error: 'Failed to update session' }, { status: response.status })
+    }
+
+    const data = await response.json()
+    return NextResponse.json(data)
+  } catch (error) {
+    console.error('Error updating session:', error)
+    return NextResponse.json({ error: 'Failed to update session' }, { status: 500 })
+  }
+}
+
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ session: string }> }

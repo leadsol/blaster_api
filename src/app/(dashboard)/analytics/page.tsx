@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import {
   Users, Loader2, Search, ChevronDown, Clock,
   Trash2, Copy, Download, MessageCircle,
-  SlidersHorizontal, CheckCheck, Check, X, StopCircle, Play, Pencil
+  SlidersHorizontal, CheckCheck, Check, X, StopCircle, Play, Pause, Pencil
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useTheme } from '@/contexts/ThemeContext'
@@ -92,8 +92,8 @@ function AnalyticsContent() {
     name: string
     phone: string | null
     sentToday: number
-    limit: number
-    bonus: number
+    limit: number // Base limit (90)
+    exemptAllowed: number // Exempt messages allowed (from variations)
     status: string
   }>>([]) // Daily stats for all devices
 
@@ -106,6 +106,12 @@ function AnalyticsContent() {
     message?: string
     type: 'success' | 'error' | 'warning' | 'info'
   }>({ isOpen: false, title: '', type: 'info' })
+  const [editActiveHoursModal, setEditActiveHoursModal] = useState<{
+    isOpen: boolean
+    campaignId: string
+    start: string
+    end: string
+  }>({ isOpen: false, campaignId: '', start: '09:00', end: '18:00' })
 
   const statusFilters = [
     { key: 'completed', label: 'הושלם' },
@@ -287,11 +293,43 @@ function AnalyticsContent() {
       if (selectedCampaign.status === 'paused' && selectedCampaign.paused_at) {
         referenceTime = new Date(selectedCampaign.paused_at).getTime()
 
-        // Calculate when campaign will resume (midnight)
-        const midnight = new Date(selectedCampaign.paused_at)
-        midnight.setDate(midnight.getDate() + 1)
-        midnight.setHours(0, 0, 0, 0)
-        setResumeAt(midnight.toISOString())
+        // Check if reached daily limit - show resume at midnight
+        const reachedDailyLimit = dailyLimit > 0 && dailyMessageCount >= dailyLimit
+
+        if (reachedDailyLimit) {
+          // Reached daily limit - resume at midnight
+          const midnight = new Date()
+          midnight.setDate(midnight.getDate() + 1)
+          midnight.setHours(0, 0, 0, 0)
+          setResumeAt(midnight.toISOString())
+        } else if (selectedCampaign.respect_active_hours && selectedCampaign.active_hours_start && selectedCampaign.active_hours_end) {
+          // Check if outside active hours
+          const now = new Date()
+          const [startH, startM] = selectedCampaign.active_hours_start.split(':').map(Number)
+          const [endH, endM] = selectedCampaign.active_hours_end.split(':').map(Number)
+
+          const currentMinutes = now.getHours() * 60 + now.getMinutes()
+          const startMinutes = startH * 60 + startM
+          const endMinutes = endH * 60 + endM
+
+          const isOutsideActiveHours = currentMinutes < startMinutes || currentMinutes >= endMinutes
+
+          if (isOutsideActiveHours) {
+            // Outside active hours - show resume at next active hours start
+            const resumeDate = new Date()
+            if (currentMinutes >= endMinutes) {
+              resumeDate.setDate(resumeDate.getDate() + 1)
+            }
+            resumeDate.setHours(startH, startM, 0, 0)
+            setResumeAt(resumeDate.toISOString())
+          } else {
+            // Inside active hours but manually paused - don't show resume time
+            setResumeAt(null)
+          }
+        } else {
+          // No active hours, not at daily limit - manually paused, don't show resume time
+          setResumeAt(null)
+        }
       } else {
         referenceTime = Date.now()
         setResumeAt(null)
@@ -349,7 +387,7 @@ function AnalyticsContent() {
     // Load campaigns with connection details
     const { data: campaignsData, error } = await supabase
       .from('campaigns')
-      .select('id, name, status, sent_count, delivered_count, read_count, reply_count, failed_count, total_recipients, scheduled_at, started_at, paused_at, estimated_duration, connection_id, device_ids, multi_device, message_variations')
+      .select('id, name, status, sent_count, delivered_count, read_count, reply_count, failed_count, total_recipients, scheduled_at, started_at, paused_at, estimated_duration, connection_id, device_ids, multi_device, message_variations, respect_active_hours, active_hours_start, active_hours_end')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
 
@@ -416,26 +454,29 @@ function AnalyticsContent() {
     if (!deviceData) return
 
     // Calculate daily limit per device
+    // Base limit is 90 messages - exempt messages from variations don't count
     const BASE_MESSAGES_PER_DAY_PER_DEVICE = 90
-    const VARIATION_BONUS = 10
+    const EXEMPT_MESSAGES_PER_VARIATION = 10
 
-    // Get all campaigns using this device to find highest variation bonus
+    // Get all campaigns using this device to find highest exempt allowance
     const { data: deviceCampaigns } = await supabase
       .from('campaigns')
       .select('message_variations')
       .or(`connection_id.eq.${deviceId},device_ids.cs.{${deviceId}}`)
 
-    let maxVariationBonus = 0
+    let maxExemptAllowed = 0
     if (deviceCampaigns) {
       deviceCampaigns.forEach(camp => {
         const messageVariations: string[] = camp.message_variations || []
-        const variationCount = messageVariations.length > 1 ? messageVariations.length : 0
-        const bonus = variationCount > 1 ? (variationCount - 1) * VARIATION_BONUS : 0
-        maxVariationBonus = Math.max(maxVariationBonus, bonus)
+        const validVariations = messageVariations.filter(v => v && v.trim().length > 0)
+        const variationCount = validVariations.length
+        const exemptAllowed = variationCount > 1 ? (variationCount - 1) * EXEMPT_MESSAGES_PER_VARIATION : 0
+        maxExemptAllowed = Math.max(maxExemptAllowed, exemptAllowed)
       })
     }
 
-    const perDeviceLimit = BASE_MESSAGES_PER_DAY_PER_DEVICE + maxVariationBonus
+    // Base limit is always 90 - exempt messages are separate
+    const perDeviceLimit = BASE_MESSAGES_PER_DAY_PER_DEVICE
 
     // Count messages sent TODAY from this device across ALL campaigns
     const todayStart = new Date()
@@ -491,7 +532,7 @@ function AnalyticsContent() {
     }
 
     const BASE_MESSAGES_PER_DAY_PER_DEVICE = 90
-    const VARIATION_BONUS = 10
+    const EXEMPT_MESSAGES_PER_VARIATION = 10
     const todayStart = new Date()
     todayStart.setHours(0, 0, 0, 0)
 
@@ -503,18 +544,17 @@ function AnalyticsContent() {
           .select('message_variations')
           .or(`connection_id.eq.${conn.id},device_ids.cs.{${conn.id}}`)
 
-        // Calculate max variation bonus across all campaigns using this device
-        let maxVariationBonus = 0
+        // Calculate max exempt messages allowed across all campaigns using this device
+        let maxExemptAllowed = 0
         if (deviceCampaigns) {
           deviceCampaigns.forEach(camp => {
             const messageVariations: string[] = camp.message_variations || []
-            const variationCount = messageVariations.length > 1 ? messageVariations.length : 0
-            const bonus = variationCount > 1 ? (variationCount - 1) * VARIATION_BONUS : 0
-            maxVariationBonus = Math.max(maxVariationBonus, bonus)
+            const validVariations = messageVariations.filter(v => v && v.trim().length > 0)
+            const variationCount = validVariations.length
+            const exemptAllowed = variationCount > 1 ? (variationCount - 1) * EXEMPT_MESSAGES_PER_VARIATION : 0
+            maxExemptAllowed = Math.max(maxExemptAllowed, exemptAllowed)
           })
         }
-
-        const deviceLimit = BASE_MESSAGES_PER_DAY_PER_DEVICE + maxVariationBonus
 
         // Count messages sent today from this device
         let sentToday = 0
@@ -544,8 +584,8 @@ function AnalyticsContent() {
           name: conn.display_name || conn.session_name,
           phone: conn.phone_number,
           sentToday,
-          limit: deviceLimit,
-          bonus: maxVariationBonus,
+          limit: BASE_MESSAGES_PER_DAY_PER_DEVICE,
+          exemptAllowed: maxExemptAllowed,
           status: conn.status
         }
       })
@@ -789,6 +829,24 @@ function AnalyticsContent() {
       return
     }
 
+    // Check if outside active hours
+    if (selectedCampaign.respect_active_hours && selectedCampaign.active_hours_start && selectedCampaign.active_hours_end) {
+      const now = new Date()
+      const currentTime = now.toTimeString().slice(0, 5) // HH:MM
+      const startTime = selectedCampaign.active_hours_start.slice(0, 5)
+      const endTime = selectedCampaign.active_hours_end.slice(0, 5)
+
+      if (currentTime < startTime || currentTime > endTime) {
+        setAlertModal({
+          isOpen: true,
+          title: 'מחוץ לשעות הפעילות',
+          message: `לא ניתן להפעיל את הקמפיין כעת.\nשעות הפעילות: ${startTime} - ${endTime}\nהשעה הנוכחית: ${currentTime}\n\nניתן לערוך את שעות הפעילות בעמוד עריכת הקמפיין.`,
+          type: 'warning'
+        })
+        return
+      }
+    }
+
     try {
       const response = await fetch(`/api/campaigns/${selectedCampaign.id}`, {
         method: 'PATCH',
@@ -832,6 +890,54 @@ function AnalyticsContent() {
     }
   }
 
+  const handleToggleActive = async () => {
+    if (!selectedCampaign) return
+
+    const newIsActive = selectedCampaign.is_active === false ? true : false
+
+    try {
+      const response = await fetch(`/api/campaigns/${selectedCampaign.id}/toggle-active`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: newIsActive })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        // Update local state - also update status if campaign was paused
+        const updates = { is_active: newIsActive, ...(data.status === 'paused' && selectedCampaign.status === 'running' ? { status: 'paused', paused_at: new Date().toISOString() } : {}) }
+
+        setCampaigns(prev => prev.map(c =>
+          c.id === selectedCampaign.id ? { ...c, ...updates } : c
+        ))
+        setSelectedCampaign(prev => prev ? { ...prev, ...updates } : null)
+
+        setAlertModal({
+          isOpen: true,
+          title: newIsActive ? 'הקמפיין פעיל' : 'הקמפיין לא פעיל',
+          message: newIsActive ? 'הקמפיין ישלח הודעות במסגרת שעות הפעילות והמכסה היומית' : 'הקמפיין הושהה ולא ישלח הודעות עד שיופעל מחדש',
+          type: newIsActive ? 'success' : 'info'
+        })
+      } else {
+        const data = await response.json()
+        setAlertModal({
+          isOpen: true,
+          title: 'שגיאה',
+          message: data.error || 'אירעה שגיאה, נסה שוב',
+          type: 'error'
+        })
+      }
+    } catch (error) {
+      console.error('Toggle active error:', error)
+      setAlertModal({
+        isOpen: true,
+        title: 'שגיאה',
+        message: 'אירעה שגיאה, נסה שוב',
+        type: 'error'
+      })
+    }
+  }
+
   const handleExportCampaign = async () => {
     if (!selectedCampaign || recipients.length === 0) return
 
@@ -860,6 +966,113 @@ function AnalyticsContent() {
     link.download = `${selectedCampaign.name}_recipients.csv`
     link.click()
     URL.revokeObjectURL(url)
+  }
+
+  const handleSaveActiveHours = async () => {
+    if (!editActiveHoursModal.campaignId) return
+
+    try {
+      const response = await fetch(`/api/campaigns/${editActiveHoursModal.campaignId}/active-hours`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          active_hours_start: editActiveHoursModal.start,
+          active_hours_end: editActiveHoursModal.end
+        })
+      })
+
+      if (response.ok) {
+        // Update local state - also set respect_active_hours to true
+        setCampaigns(prev => prev.map(c =>
+          c.id === editActiveHoursModal.campaignId
+            ? { ...c, respect_active_hours: true, active_hours_start: editActiveHoursModal.start, active_hours_end: editActiveHoursModal.end }
+            : c
+        ))
+        if (selectedCampaign?.id === editActiveHoursModal.campaignId) {
+          setSelectedCampaign(prev => prev ? {
+            ...prev,
+            respect_active_hours: true,
+            active_hours_start: editActiveHoursModal.start,
+            active_hours_end: editActiveHoursModal.end
+          } : null)
+        }
+
+        setEditActiveHoursModal({ isOpen: false, campaignId: '', start: '09:00', end: '18:00' })
+        setAlertModal({
+          isOpen: true,
+          title: 'שעות הפעילות עודכנו בהצלחה',
+          type: 'success'
+        })
+      } else {
+        const data = await response.json()
+        setAlertModal({
+          isOpen: true,
+          title: 'שגיאה בעדכון שעות הפעילות',
+          message: data.error || 'אירעה שגיאה, נסה שוב',
+          type: 'error'
+        })
+      }
+    } catch (error) {
+      console.error('Save active hours error:', error)
+      setAlertModal({
+        isOpen: true,
+        title: 'שגיאה בעדכון שעות הפעילות',
+        message: 'אירעה שגיאה, נסה שוב',
+        type: 'error'
+      })
+    }
+  }
+
+  const handleRemoveActiveHours = async () => {
+    if (!editActiveHoursModal.campaignId) return
+
+    try {
+      const response = await fetch(`/api/campaigns/${editActiveHoursModal.campaignId}/active-hours`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ remove_active_hours: true })
+      })
+
+      if (response.ok) {
+        // Update local state
+        setCampaigns(prev => prev.map(c =>
+          c.id === editActiveHoursModal.campaignId
+            ? { ...c, respect_active_hours: false, active_hours_start: null, active_hours_end: null }
+            : c
+        ))
+        if (selectedCampaign?.id === editActiveHoursModal.campaignId) {
+          setSelectedCampaign(prev => prev ? {
+            ...prev,
+            respect_active_hours: false,
+            active_hours_start: null,
+            active_hours_end: null
+          } : null)
+        }
+
+        setEditActiveHoursModal({ isOpen: false, campaignId: '', start: '09:00', end: '18:00' })
+        setAlertModal({
+          isOpen: true,
+          title: 'שעות הפעילות הוסרו בהצלחה',
+          type: 'success'
+        })
+      } else {
+        const data = await response.json()
+        setAlertModal({
+          isOpen: true,
+          title: 'שגיאה בהסרת שעות הפעילות',
+          message: data.error || 'אירעה שגיאה, נסה שוב',
+          type: 'error'
+        })
+      }
+    } catch (error) {
+      console.error('Remove active hours error:', error)
+      setAlertModal({
+        isOpen: true,
+        title: 'שגיאה בהסרת שעות הפעילות',
+        message: 'אירעה שגיאה, נסה שוב',
+        type: 'error'
+      })
+    }
   }
 
   const getStatusLabel = (status: string) => {
@@ -1193,8 +1406,10 @@ function AnalyticsContent() {
                     const selectedStats = allDevicesStats.filter(d => selectedDevices.has(d.id))
                     const totalSent = selectedStats.reduce((sum, d) => sum + d.sentToday, 0)
                     const totalLimit = selectedStats.reduce((sum, d) => sum + d.limit, 0)
-                    const totalBonus = selectedStats.reduce((sum, d) => sum + d.bonus, 0)
-                    const remaining = totalLimit - totalSent
+                    const totalExemptAllowed = selectedStats.reduce((sum, d) => sum + d.exemptAllowed, 0)
+                    // Calculate how many "exempt" messages were used (sent beyond base limit)
+                    const exemptUsed = Math.max(0, totalSent - totalLimit)
+                    const remaining = totalLimit - Math.min(totalSent, totalLimit)
 
                     return (
                       <div className="flex items-center gap-3 text-right">
@@ -1206,16 +1421,21 @@ function AnalyticsContent() {
                         <div>
                           <span className={`text-[12px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>נשארו: </span>
                           <span className={`text-[14px] font-medium ${remaining <= 0 ? 'text-red-500' : darkMode ? 'text-white' : 'text-[#030733]'}`}>
-                            {Math.max(0, remaining)}
+                            {remaining}
                           </span>
                         </div>
-                        <div className={`w-px h-4 ${darkMode ? 'bg-[#2a3f5f]' : 'bg-gray-300'}`} />
-                        <div>
-                          <span className={`text-[12px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>בונוס: </span>
-                          <span className={`text-[14px] font-medium ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
-                            {totalBonus > 0 ? `+${totalBonus}` : '0'}
-                          </span>
-                        </div>
+                        {/* Show "חריגה" only if user exceeded base limit */}
+                        {exemptUsed > 0 && (
+                          <>
+                            <div className={`w-px h-4 ${darkMode ? 'bg-[#2a3f5f]' : 'bg-gray-300'}`} />
+                            <div>
+                              <span className={`text-[12px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>חריגה: </span>
+                              <span className={`text-[14px] font-medium text-orange-500`}>
+                                {exemptUsed}/{totalExemptAllowed}
+                              </span>
+                            </div>
+                          </>
+                        )}
                       </div>
                     )
                   })()}
@@ -1316,7 +1536,12 @@ function AnalyticsContent() {
                         </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1.5 sm:gap-2 mt-1 sm:mt-1.5 md:mt-2 justify-end">
+                    <div className="flex items-center gap-1.5 sm:gap-2 mt-1 sm:mt-1.5 md:mt-2 justify-end flex-wrap">
+                      {campaign.respect_active_hours === true && campaign.active_hours_start && campaign.active_hours_end && (
+                        <span className={`text-[9px] sm:text-[10px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
+                          {campaign.active_hours_end.slice(0, 5)} - {campaign.active_hours_start.slice(0, 5)}
+                        </span>
+                      )}
                       <div className="flex items-center gap-0.5 sm:gap-1">
                         <span className={`text-[9px] sm:text-[10px] md:text-[11px] lg:text-[12px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'} truncate`}>
                           {campaign.scheduled_at
@@ -1343,69 +1568,74 @@ function AnalyticsContent() {
             {/* TOP ROW: Selected Campaign + Send Time + Response Time - RESPONSIVE */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 md:gap-4">
               {/* Selected Campaign Card - Dark - Compact */}
-              <div className="bg-[#030733] rounded-[8px] sm:rounded-[10px] md:rounded-[12px] px-3 sm:px-4 md:px-5 xl:px-6 py-2 sm:py-2.5 md:py-3 xl:py-4 text-white">
-                <h3 className="text-[11px] sm:text-[12px] md:text-[13px] lg:text-[14px] xl:text-[15px] 2xl:text-[16px] font-semibold mb-0.5 sm:mb-1 text-right">הקמפיין שבחרת</h3>
-                <p className="text-[10px] sm:text-[11px] md:text-[12px] lg:text-[13px] xl:text-[14px] text-right truncate">{selectedCampaign?.name || 'בחר קמפיין'}</p>
-
-                {/* Active Hours - if enabled */}
-                {selectedCampaign?.respect_active_hours && selectedCampaign?.active_hours_start && selectedCampaign?.active_hours_end && (
-                  <div className="flex items-center gap-1 sm:gap-1.5 md:gap-2 justify-end mt-1 sm:mt-1.5 md:mt-2 mb-0.5 sm:mb-1">
-                    <span className="text-[9px] sm:text-[10px] md:text-[11px] lg:text-[12px] text-[#B5B5B5]">
-                      {selectedCampaign.active_hours_start.slice(0, 5)} - {selectedCampaign.active_hours_end.slice(0, 5)}
-                    </span>
-                    <Clock size={11} className="text-[#0043E0] flex-shrink-0" />
-                    <span className="text-[8px] sm:text-[9px] md:text-[10px] lg:text-[11px] text-[#8A8A8A]">שעות פעילות</span>
+              <div className="bg-[#030733] rounded-[6px] sm:rounded-[8px] px-2 sm:px-2.5 md:px-3 py-1 sm:py-1.5 md:py-2 text-white">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-[10px] sm:text-[11px] md:text-[12px] font-semibold">הקמפיין שבחרת</h3>
+                  {selectedCampaign?.respect_active_hours === true && selectedCampaign?.active_hours_start && selectedCampaign?.active_hours_end && (
+                    <div className="flex items-center gap-1 text-[8px] sm:text-[9px] text-[#B5B5B5]">
+                      <span>שעות פעילות</span>
+                      <Clock size={9} className="text-[#0043E0]" />
+                      <span>{selectedCampaign.active_hours_end.slice(0, 5)} - {selectedCampaign.active_hours_start.slice(0, 5)}</span>
+                    </div>
+                  )}
+                </div>
+                <p className="text-[10px] sm:text-[11px] md:text-[12px] text-right truncate">{selectedCampaign?.name || 'בחר קמפיין'}</p>
+                <div className="flex items-center justify-between mt-0.5">
+                  {/* Campaign Devices - left side */}
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {selectedCampaign && (() => {
+                      const deviceIds = selectedCampaign.multi_device && selectedCampaign.device_ids
+                        ? selectedCampaign.device_ids
+                        : [selectedCampaign.connection_id]
+                      const campaignDevices = connections.filter(c => deviceIds.includes(c.id))
+                      return campaignDevices.length > 0 ? (
+                        campaignDevices.map((device) => (
+                          <span
+                            key={device.id}
+                            className={`text-[8px] sm:text-[9px] px-1 py-0.5 rounded ${
+                              device.status === 'connected'
+                                ? 'bg-green-500/20 text-green-400'
+                                : 'bg-red-500/20 text-red-400'
+                            }`}
+                          >
+                            {device.display_name || device.session_name}
+                          </span>
+                        ))
+                      ) : null
+                    })()}
                   </div>
-                )}
-
-                <div className="flex items-center gap-2 sm:gap-2.5 md:gap-3 justify-end mt-0.5 sm:mt-1">
+                  {/* Recipients count - right side */}
                   <div className="flex items-center gap-0.5 sm:gap-1">
                     <span className="text-[9px] sm:text-[10px] md:text-[11px] text-[#B5B5B5]">
                       {recipients.length > 0 ? recipients.length.toLocaleString() : (selectedCampaign?.total_recipients || 0).toLocaleString()}
                     </span>
                     <Users size={10} className="text-white flex-shrink-0" />
                   </div>
-                  <div className="flex items-center gap-0.5 sm:gap-1">
-                    <span className="text-[9px] sm:text-[10px] md:text-[11px] text-[#B5B5B5] truncate">
-                      {selectedCampaign?.scheduled_at
-                        ? new Date(selectedCampaign.scheduled_at).toLocaleDateString('he-IL')
-                        : '-'
-                      }
-                    </span>
-                    <Clock size={10} className="text-[#0043E0] flex-shrink-0" />
-                  </div>
                 </div>
               </div>
 
               {/* Send Time Card - Compact with countdown - RESPONSIVE */}
-              <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[8px] sm:rounded-[10px] md:rounded-[12px] px-3 sm:px-4 md:px-5 xl:px-6 py-2 sm:py-2.5 md:py-3 xl:py-4`}>
-                <h3 className={`text-[11px] sm:text-[12px] md:text-[13px] lg:text-[14px] xl:text-[15px] 2xl:text-[16px] font-semibold mb-0.5 sm:mb-1 text-right ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+              <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[6px] sm:rounded-[8px] px-2 sm:px-2.5 md:px-3 py-1 sm:py-1.5 md:py-2`}>
+                <h3 className={`text-[10px] sm:text-[11px] md:text-[12px] lg:text-[13px] font-semibold mb-0.5 text-right ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
                   {(selectedCampaign?.status === 'running' || selectedCampaign?.status === 'paused') && countdown
                     ? (selectedCampaign?.status === 'paused' ? 'זמן שנותר (מושהה)' : 'זמן שנותר')
                     : (selectedCampaign?.status === 'running' || selectedCampaign?.status === 'paused') ? 'הושלם' : 'זמן שליחת הקמפיין'}
                 </h3>
                 {(selectedCampaign?.status === 'running' || selectedCampaign?.status === 'paused') && countdown ? (
-                  <>
-                    <p className={`text-[14px] sm:text-[16px] md:text-[18px] lg:text-[20px] xl:text-[22px] 2xl:text-[24px] font-bold text-right ${selectedCampaign?.status === 'paused' ? 'text-[#F59E0B]' : 'text-[#0043E0]'}`} dir="ltr">
+                  <div className="flex items-center justify-between">
+                    <div className={`text-[8px] sm:text-[9px] text-left ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
+                      <p>סה״כ: {formatDurationShort(selectedCampaign.estimated_duration)}</p>
+                      {selectedCampaign?.status === 'paused' && resumeAt && (
+                        <p className={`${darkMode ? 'text-orange-400' : 'text-orange-600'}`}>
+                          ימשיך ב-{new Date(resumeAt).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      )}
+                    </div>
+                    <p className={`text-[12px] sm:text-[14px] md:text-[16px] font-bold ${selectedCampaign?.status === 'paused' ? 'text-[#F59E0B]' : 'text-[#0043E0]'}`} dir="ltr">
                       {countdown}
-                      {selectedCampaign?.status === 'paused' && <span className="text-[10px] sm:text-[11px] md:text-[12px] mr-1 sm:mr-2">⏸</span>}
+                      {selectedCampaign?.status === 'paused' && <span className="text-[9px] mr-1">⏸</span>}
                     </p>
-                    <p className={`text-[9px] sm:text-[10px] md:text-[11px] text-right ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
-                      סה״כ: {formatDurationShort(selectedCampaign.estimated_duration)}
-                    </p>
-                    {/* Show daily limit info if campaign is running/paused */}
-                    {dailyLimit > 0 && (
-                      <p className={`text-[11px] text-right mt-1 ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
-                        היום: {dailyMessageCount}/{dailyLimit} הודעות
-                      </p>
-                    )}
-                    {/* Show resume time if paused due to daily limit */}
-                    {selectedCampaign?.status === 'paused' && resumeAt && dailyMessageCount >= dailyLimit && (
-                      <p className={`text-[10px] text-right mt-1 ${darkMode ? 'text-orange-400' : 'text-orange-600'}`}>
-                        ימשיך ב-{new Date(resumeAt).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
-                      </p>
-                    )}
-                  </>
+                  </div>
                 ) : (selectedCampaign?.status === 'running' || selectedCampaign?.status === 'paused') ? (
                   <>
                     <p className={`text-[20px] font-bold text-right text-[#187C55]`}>✓</p>
@@ -1429,8 +1659,8 @@ function AnalyticsContent() {
               </div>
 
               {/* Device Messages Distribution Card - Shows how many messages each device sent */}
-              <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[10px] px-4 py-3`}>
-                <h3 className={`text-[14px] font-semibold mb-1 text-right ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+              <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[6px] sm:rounded-[8px] px-2 sm:px-2.5 md:px-3 py-1 sm:py-1.5 md:py-2`}>
+                <h3 className={`text-[10px] sm:text-[11px] md:text-[12px] lg:text-[13px] font-semibold mb-0.5 text-right ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
                   הודעות לפי מכשיר
                 </h3>
                 {selectedCampaign && Object.keys(deviceMessagesCount).length > 0 ? (
@@ -1460,7 +1690,7 @@ function AnalyticsContent() {
             </div>
 
             {/* BOTTOM ROW: Recipients Panel + Stats Column - RESPONSIVE */}
-            <div className="grid grid-cols-1 lg:grid-cols-7 gap-2 sm:gap-3 md:gap-4 flex-1 overflow-y-auto">
+            <div className="grid grid-cols-1 lg:grid-cols-7 gap-2 sm:gap-3 md:gap-4 flex-1 min-h-0 overflow-y-auto">
               {/* Recipients Panel - RESPONSIVE */}
               <div className={`lg:col-span-4 ${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[10px] sm:rounded-[12px] md:rounded-[15px] p-3 sm:p-4 md:p-5 flex flex-col`}>
                 <h3 className={`text-[13px] sm:text-[14px] md:text-[16px] lg:text-[17px] xl:text-[18px] 2xl:text-[20px] font-semibold mb-2 sm:mb-3 md:mb-4 text-right ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
@@ -1572,7 +1802,7 @@ function AnalyticsContent() {
               </div>
 
               {/* Stats Column - RESPONSIVE */}
-              <div className="lg:col-span-3 space-y-2 sm:space-y-3 md:space-y-4">
+              <div className="lg:col-span-3 space-y-2 sm:space-y-3 md:space-y-4 overflow-y-auto max-h-full">
                 {/* Stats Overview - Donut Chart + Percentages - RESPONSIVE */}
                 <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[10px] sm:rounded-[12px] md:rounded-[15px] p-3 sm:p-4 md:p-5`}>
                   <h3 className={`text-[12px] sm:text-[13px] md:text-[14px] lg:text-[15px] xl:text-[16px] 2xl:text-[18px] font-semibold mb-2 sm:mb-3 md:mb-4 text-right ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
@@ -1581,7 +1811,7 @@ function AnalyticsContent() {
 
                   {/* Large Donut Chart - Centered - RESPONSIVE */}
                   <div className="flex justify-center mb-2 sm:mb-3 md:mb-4">
-                    <div className="relative w-[120px] h-[120px] sm:w-[140px] sm:h-[140px] md:w-[160px] md:h-[160px] lg:w-[180px] lg:h-[180px] xl:w-[200px] xl:h-[200px] 2xl:w-[220px] 2xl:h-[220px]">
+                    <div className="relative w-[100px] h-[100px] sm:w-[110px] sm:h-[110px] md:w-[120px] md:h-[120px] lg:w-[130px] lg:h-[130px] xl:w-[140px] xl:h-[140px] 2xl:w-[150px] 2xl:h-[150px]">
                       <svg viewBox="0 0 100 100" className="w-full h-full transform -rotate-90">
                         <circle cx="50" cy="50" r="42" fill="none" stroke={darkMode ? '#1a2d4a' : '#E5E7EB'} strokeWidth="8" />
                         {successRate > 0 && (
@@ -1646,18 +1876,18 @@ function AnalyticsContent() {
                   </div>
                 </div>
 
-                {/* Responses Received - COMPACT */}
-                <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[6px] sm:rounded-[8px] p-1.5 sm:p-2`}>
-                  <div className="flex items-center justify-between mb-1">
-                    <MessageCircle size={12} className={`${darkMode ? 'text-white' : 'text-[#030733]'} flex-shrink-0`} />
-                    <h3 className={`text-[10px] sm:text-[11px] font-semibold ${darkMode ? 'text-white' : 'text-[#030733]'}`}>תגובות שהתקבלו</h3>
+                {/* Responses Received - RESPONSIVE */}
+                <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[8px] sm:rounded-[10px] p-2 sm:p-3 md:p-4`}>
+                  <div className="flex items-center justify-between mb-2 sm:mb-2.5 md:mb-3">
+                    <MessageCircle size={14} className={`${darkMode ? 'text-white' : 'text-[#030733]'} flex-shrink-0`} />
+                    <h3 className={`text-[11px] sm:text-[12px] md:text-[13px] lg:text-[14px] xl:text-[15px] font-semibold ${darkMode ? 'text-white' : 'text-[#030733]'}`}>תגובות שהתקבלו</h3>
                   </div>
-                  <div className="mb-1">
-                    <div className={`${darkMode ? 'bg-[#030733]/40' : 'bg-[rgba(3,7,51,0.24)]'} h-[4px] rounded-[50px] overflow-hidden`}>
+                  <div className="mb-2">
+                    <div className={`${darkMode ? 'bg-[#030733]/40' : 'bg-[rgba(3,7,51,0.24)]'} h-[6px] rounded-[50px] overflow-hidden`}>
                       <div className="bg-[#030733] h-full rounded-[50px] transition-all duration-300" style={{ width: `${replyRate}%` }} />
                     </div>
                   </div>
-                  <div className="flex items-center justify-between text-[8px] sm:text-[9px]">
+                  <div className="flex items-center justify-between text-[9px] sm:text-[10px] md:text-[11px] lg:text-[12px]">
                     <span className={`${darkMode ? 'text-gray-400' : 'text-[#454545]'}`}>
                       <span className={`font-medium ${darkMode ? 'text-white' : 'text-[#030733]'}`}>{campaignStats.sent}</span> סה״כ
                     </span>
@@ -1668,18 +1898,18 @@ function AnalyticsContent() {
                   </div>
                 </div>
 
-                {/* Messages Viewed - COMPACT */}
-                <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[6px] sm:rounded-[8px] p-1.5 sm:p-2`}>
-                  <div className="flex items-center justify-between mb-1">
-                    <CheckCheck size={12} className={`${darkMode ? 'text-white' : 'text-[#030733]'} flex-shrink-0`} />
-                    <h3 className={`text-[10px] sm:text-[11px] font-semibold ${darkMode ? 'text-white' : 'text-[#030733]'}`}>הודעות שנצפו</h3>
+                {/* Messages Viewed - RESPONSIVE */}
+                <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[8px] sm:rounded-[10px] p-2 sm:p-3 md:p-4`}>
+                  <div className="flex items-center justify-between mb-2 sm:mb-2.5 md:mb-3">
+                    <CheckCheck size={14} className={`${darkMode ? 'text-white' : 'text-[#030733]'} flex-shrink-0`} />
+                    <h3 className={`text-[11px] sm:text-[12px] md:text-[13px] lg:text-[14px] xl:text-[15px] font-semibold ${darkMode ? 'text-white' : 'text-[#030733]'}`}>הודעות שנצפו</h3>
                   </div>
-                  <div className="mb-1">
-                    <div className={`${darkMode ? 'bg-[#030733]/40' : 'bg-[rgba(3,7,51,0.24)]'} h-[4px] rounded-[50px] overflow-hidden`}>
+                  <div className="mb-2">
+                    <div className={`${darkMode ? 'bg-[#030733]/40' : 'bg-[rgba(3,7,51,0.24)]'} h-[6px] rounded-[50px] overflow-hidden`}>
                       <div className="bg-[#030733] h-full rounded-[50px] transition-all duration-300" style={{ width: `${readRate}%` }} />
                     </div>
                   </div>
-                  <div className="flex items-center justify-between text-[8px] sm:text-[9px]">
+                  <div className="flex items-center justify-between text-[9px] sm:text-[10px] md:text-[11px] lg:text-[12px]">
                     <span className={`${darkMode ? 'text-gray-400' : 'text-[#454545]'}`}>
                       <span className={`font-medium ${darkMode ? 'text-white' : 'text-[#030733]'}`}>{campaignStats.sent}</span> סה״כ
                     </span>
@@ -1690,38 +1920,93 @@ function AnalyticsContent() {
                   </div>
                 </div>
 
-                {/* Campaign Control Buttons - RESPONSIVE */}
-                {selectedCampaign && ['running', 'paused', 'scheduled'].includes(selectedCampaign.status) && (
-                  <div className="flex gap-1.5 sm:gap-2 justify-center mb-2 sm:mb-3">
+                {/* Campaign Control Buttons - RESPONSIVE - All in one row */}
+                {selectedCampaign && ['running', 'paused', 'scheduled'].includes(selectedCampaign.status) && (() => {
+                  // Check if outside active hours
+                  const now = new Date()
+                  const currentTime = now.toTimeString().slice(0, 5)
+                  const isOutsideActiveHours = selectedCampaign.respect_active_hours &&
+                    selectedCampaign.active_hours_start && selectedCampaign.active_hours_end &&
+                    (currentTime < selectedCampaign.active_hours_start.slice(0,5) || currentTime > selectedCampaign.active_hours_end.slice(0,5))
+
+                  // Check if daily limit reached
+                  const isDailyLimitReached = dailyLimit > 0 && dailyMessageCount >= dailyLimit
+
+                  // Pause/Resume should be disabled when outside hours, limit reached, or is_active is false
+                  const isInactive = selectedCampaign.is_active === false
+                  const isPauseResumeDisabled = isOutsideActiveHours || isDailyLimitReached || isInactive
+
+                  return (
+                  <div className="flex gap-1.5 sm:gap-2 justify-center items-center mb-2 sm:mb-3 flex-wrap">
+                    {/* Active Toggle - controls is_active field */}
+                    <div className="flex items-center gap-1">
+                      <span className={`text-[8px] sm:text-[9px] ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                        {selectedCampaign.is_active !== false ? 'פעיל' : 'לא פעיל'}
+                      </span>
+                      <button
+                        onClick={() => handleToggleActive()}
+                        className={`relative w-8 h-4 rounded-full transition-colors ${
+                          selectedCampaign.is_active !== false ? 'bg-[#187C55]' : 'bg-gray-500'
+                        }`}
+                        title={selectedCampaign.is_active !== false ? 'כבה קמפיין' : 'הפעל קמפיין'}
+                      >
+                        <span
+                          className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${
+                            selectedCampaign.is_active !== false ? 'right-0.5' : 'right-[18px]'
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    {/* Pause/Resume Buttons */}
                     {selectedCampaign.status === 'running' && (
                       <button
                         onClick={handlePauseCampaign}
-                        className="flex-1 bg-[#F59E0B] rounded-[7px] sm:rounded-[8px] md:rounded-[9px] py-1.5 sm:py-2 md:py-2.5 px-2 sm:px-3 md:px-4 flex items-center justify-center gap-1 sm:gap-1.5 md:gap-2 hover:opacity-80 transition-opacity"
-                        title="השהה קמפיין"
+                        disabled={isPauseResumeDisabled}
+                        className={`rounded-[7px] sm:rounded-[8px] py-1.5 sm:py-2 px-2 sm:px-3 flex items-center justify-center gap-1 transition-opacity ${
+                          isPauseResumeDisabled ? 'bg-gray-400 cursor-not-allowed' : 'bg-[#F59E0B] hover:opacity-80'
+                        }`}
+                        title={isPauseResumeDisabled ? (isInactive ? 'הקמפיין לא פעיל' : isOutsideActiveHours ? 'מחוץ לשעות פעילות' : 'הגעת למכסה היומית') : 'השהה קמפיין'}
                       >
-                        <span className="text-white text-[10px] sm:text-[11px] md:text-[12px] lg:text-[13px] font-medium">השהה</span>
+                        <Pause size={12} className="text-white flex-shrink-0" />
+                        <span className="text-white text-[9px] sm:text-[10px] font-medium">השהה</span>
                       </button>
                     )}
                     {selectedCampaign.status === 'paused' && (
                       <button
                         onClick={handleResumeCampaign}
-                        className="flex-1 bg-[#187C55] rounded-[7px] sm:rounded-[8px] md:rounded-[9px] py-1.5 sm:py-2 md:py-2.5 px-2 sm:px-3 md:px-4 flex items-center justify-center gap-1 sm:gap-1.5 md:gap-2 hover:opacity-80 transition-opacity"
-                        title="המשך קמפיין"
+                        disabled={isPauseResumeDisabled}
+                        className={`rounded-[7px] sm:rounded-[8px] py-1.5 sm:py-2 px-2 sm:px-3 flex items-center justify-center gap-1 transition-opacity ${
+                          isPauseResumeDisabled ? 'bg-gray-400 cursor-not-allowed' : 'bg-[#187C55] hover:opacity-80'
+                        }`}
+                        title={isPauseResumeDisabled ? (isInactive ? 'הקמפיין לא פעיל' : isOutsideActiveHours ? 'מחוץ לשעות פעילות' : 'הגעת למכסה היומית') : 'המשך קמפיין'}
                       >
-                        <Play size={14} className="text-white flex-shrink-0" />
-                        <span className="text-white text-[10px] sm:text-[11px] md:text-[12px] lg:text-[13px] font-medium">המשך</span>
+                        <Play size={12} className="text-white flex-shrink-0" />
+                        <span className="text-white text-[9px] sm:text-[10px] font-medium">המשך</span>
                       </button>
                     )}
+
+                    {/* Cancel Button */}
                     <button
                       onClick={handleCancelCampaign}
-                      className="flex-1 bg-[#CD1B1B] rounded-[7px] sm:rounded-[8px] md:rounded-[9px] py-1.5 sm:py-2 md:py-2.5 px-2 sm:px-3 md:px-4 flex items-center justify-center gap-1 sm:gap-1.5 md:gap-2 hover:opacity-80 transition-opacity"
+                      className="bg-[#CD1B1B] rounded-[7px] sm:rounded-[8px] py-1.5 sm:py-2 px-2 sm:px-3 flex items-center justify-center gap-1 hover:opacity-80 transition-opacity"
                       title="בטל קמפיין"
                     >
-                      <StopCircle size={14} className="text-white flex-shrink-0" />
-                      <span className="text-white text-[10px] sm:text-[11px] md:text-[12px] lg:text-[13px] font-medium">בטל</span>
+                      <StopCircle size={12} className="text-white flex-shrink-0" />
+                      <span className="text-white text-[9px] sm:text-[10px] font-medium">בטל</span>
+                    </button>
+
+                    {/* Edit Active Hours Button - always visible */}
+                    <button
+                      onClick={() => setEditActiveHoursModal({ isOpen: true, campaignId: selectedCampaign.id, start: selectedCampaign.active_hours_start?.slice(0,5) || '09:00', end: selectedCampaign.active_hours_end?.slice(0,5) || '18:00' })}
+                      className={`rounded-[7px] sm:rounded-[8px] py-1.5 sm:py-2 px-2 sm:px-3 flex items-center justify-center gap-1 hover:opacity-80 transition-opacity ${selectedCampaign.respect_active_hours ? 'bg-[#0043E0]' : 'bg-gray-500'}`}
+                      title={selectedCampaign.respect_active_hours ? 'ערוך שעות פעילות' : 'הוסף שעות פעילות'}
+                    >
+                      <Clock size={12} className="text-white flex-shrink-0" />
                     </button>
                   </div>
-                )}
+                  )
+                })()}
 
                 {/* Social/Action Buttons - RESPONSIVE */}
                 <div className="flex gap-1.5 sm:gap-2 justify-center">
@@ -1932,6 +2217,78 @@ function AnalyticsContent() {
         message={alertModal.message}
         type={alertModal.type}
       />
+
+      {/* Edit Active Hours Modal */}
+      {editActiveHoursModal.isOpen && (() => {
+        const campaign = campaigns.find(c => c.id === editActiveHoursModal.campaignId)
+        const hasActiveHours = campaign?.respect_active_hours
+        return (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setEditActiveHoursModal({ ...editActiveHoursModal, isOpen: false })}>
+          <div
+            className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[15px] p-6 max-w-sm w-full`}
+            onClick={e => e.stopPropagation()}
+            dir="rtl"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+                {hasActiveHours ? 'עריכת שעות פעילות' : 'הוספת שעות פעילות'}
+              </h3>
+              <button
+                onClick={() => setEditActiveHoursModal({ ...editActiveHoursModal, isOpen: false })}
+                className={`p-1 rounded-full hover:bg-gray-100 ${darkMode ? 'hover:bg-gray-700' : ''}`}
+              >
+                <X size={20} className={darkMode ? 'text-white' : 'text-gray-500'} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>שעת התחלה</label>
+                <input
+                  type="time"
+                  value={editActiveHoursModal.start}
+                  onChange={(e) => setEditActiveHoursModal({ ...editActiveHoursModal, start: e.target.value })}
+                  className={`w-full px-3 py-2 rounded-lg border ${darkMode ? 'bg-[#0A1628] border-gray-600 text-white' : 'bg-white border-gray-300'}`}
+                />
+              </div>
+              <div>
+                <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>שעת סיום</label>
+                <input
+                  type="time"
+                  value={editActiveHoursModal.end}
+                  onChange={(e) => setEditActiveHoursModal({ ...editActiveHoursModal, end: e.target.value })}
+                  className={`w-full px-3 py-2 rounded-lg border ${darkMode ? 'bg-[#0A1628] border-gray-600 text-white' : 'bg-white border-gray-300'}`}
+                />
+              </div>
+
+              <div className="flex gap-2 mt-6">
+                <button
+                  onClick={handleSaveActiveHours}
+                  className="flex-1 bg-[#0043E0] text-white py-2 px-4 rounded-lg hover:opacity-80 transition-opacity"
+                >
+                  {hasActiveHours ? 'שמור' : 'הוסף'}
+                </button>
+                <button
+                  onClick={() => setEditActiveHoursModal({ ...editActiveHoursModal, isOpen: false })}
+                  className={`flex-1 py-2 px-4 rounded-lg border ${darkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-300 text-gray-600 hover:bg-gray-100'}`}
+                >
+                  ביטול
+                </button>
+              </div>
+
+              {hasActiveHours && (
+                <button
+                  onClick={handleRemoveActiveHours}
+                  className="w-full mt-2 py-2 px-4 rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors"
+                >
+                  הסר שעות פעילות
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+        )
+      })()}
     </div>
   )
 }

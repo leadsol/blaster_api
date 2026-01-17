@@ -233,11 +233,11 @@ export default function ConnectionsPage() {
       // Generate unique session ID for WAHA (LEADSOL1, LEADSOL2, etc.)
       const wahaSessionName = await getNextSessionName()
 
-      // Create session in WAHA with auto-generated name
+      // Create session in WAHA with auto-generated name and display name in metadata
       const wahaResponse = await fetch('/api/waha/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: wahaSessionName }),
+        body: JSON.stringify({ name: wahaSessionName, displayName: displayName.trim() }),
       })
 
       const wahaData = await wahaResponse.json()
@@ -603,9 +603,23 @@ export default function ConnectionsPage() {
     setSavingName(true)
     try {
       const supabase = createClient()
+
+      // Update in database
       await supabase.from('connections').update({
         display_name: editDisplayName.trim() || null,
       }).eq('id', connectionToEdit.id)
+
+      // Also update WAHA metadata
+      try {
+        await fetch(`/api/waha/sessions/${connectionToEdit.session_name}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ displayName: editDisplayName.trim() }),
+        })
+      } catch (wahaError) {
+        console.warn('Failed to update WAHA metadata:', wahaError)
+        // Continue anyway - the main DB update succeeded
+      }
 
       setConnections(connections.map(c =>
         c.id === connectionToEdit.id

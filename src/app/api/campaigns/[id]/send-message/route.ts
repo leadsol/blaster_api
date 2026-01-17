@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { waha } from '@/lib/waha'
 import { verifySignatureAppRouter } from '@upstash/qstash/nextjs'
 import { Client as QStashClient } from '@upstash/qstash'
+import { isQStashConfigured } from '@/lib/qstash'
 
 const qstash = new QStashClient({ token: process.env.QSTASH_TOKEN || '' })
 
@@ -34,11 +35,32 @@ async function scheduleNextMessageImmediately(campaignId: string) {
 
   console.log(`⚡ [SEND-MESSAGE] Scheduling next message ${nextMessage.id} IMMEDIATELY (5s delay) after failure`)
 
-  await qstash.publishJSON({
-    url: endpoint,
-    body: { messageId: nextMessage.id },
-    delay: 5 // 5 seconds delay
-  })
+  // Check if QStash is configured, otherwise use setTimeout fallback
+  if (isQStashConfigured()) {
+    await qstash.publishJSON({
+      url: endpoint,
+      body: { messageId: nextMessage.id },
+      delay: 5 // 5 seconds delay
+    })
+  } else {
+    // Localhost fallback - use setTimeout
+    console.log(`[FALLBACK] Scheduling immediate retry for message ${nextMessage.id} with 5s delay`)
+    setTimeout(async () => {
+      try {
+        console.log(`[FALLBACK] Retrying message ${nextMessage.id} now`)
+        await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-internal-secret': process.env.CRON_SECRET || '',
+          },
+          body: JSON.stringify({ messageId: nextMessage.id })
+        })
+      } catch (err) {
+        console.error(`[FALLBACK] Failed to retry message ${nextMessage.id}:`, err)
+      }
+    }, 5000)
+  }
 }
 
 // This endpoint is called by QStash to send a single message
@@ -98,6 +120,12 @@ async function handler(
       return NextResponse.json({ success: true, skipped: true, reason: 'Campaign not running' })
     }
 
+    // Check if campaign is active (is_active toggle)
+    if (campaign.is_active === false) {
+      console.log(`[SEND-MESSAGE] Campaign ${campaignId} is deactivated (is_active: false)`)
+      return NextResponse.json({ success: true, skipped: true, reason: 'Campaign is deactivated' })
+    }
+
     // Check if we're within active hours (if enabled)
     if (campaign.respect_active_hours && campaign.active_hours_start && campaign.active_hours_end) {
       const now = new Date()
@@ -131,13 +159,30 @@ async function handler(
 
         const endpoint = `${appUrl}/api/campaigns/${campaignId}/send-message`
 
-        await qstash.publishJSON({
-          url: endpoint,
-          body: { messageId },
-          delay: delaySeconds
-        })
+        // Use QStash if available, otherwise fallback to setTimeout for localhost
+        if (isQStashConfigured()) {
+          await qstash.publishJSON({
+            url: endpoint,
+            body: { messageId },
+            delay: delaySeconds
+          })
+          console.log(`⏰ [SEND-MESSAGE] Rescheduled message via QStash for ${nextActiveStart.toISOString()} (in ${delaySeconds}s)`)
+        } else {
+          // Fallback: pause campaign when outside active hours on localhost
+          // This is safer than trying to use setTimeout for potentially hours
+          console.log(`⏰ [SEND-MESSAGE] Outside active hours on localhost - auto-pausing campaign`)
 
-        console.log(`⏰ [SEND-MESSAGE] Rescheduled message for ${nextActiveStart.toISOString()} (in ${delaySeconds}s)`)
+          await supabase
+            .from('campaigns')
+            .update({
+              status: 'paused',
+              paused_at: new Date().toISOString()
+            })
+            .eq('id', campaignId)
+
+          console.log(`⏰ [SEND-MESSAGE] Campaign paused until active hours resume at ${nextActiveStart.toISOString()}`)
+        }
+
         return NextResponse.json({ success: true, rescheduled: true, nextAttempt: nextActiveStart.toISOString() })
       }
     }

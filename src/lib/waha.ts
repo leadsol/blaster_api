@@ -913,6 +913,7 @@ export interface SessionConfig {
     webhooks?: WebhookConfig[]
     proxy?: string
     debug?: boolean
+    metadata?: Record<string, unknown>
     noweb?: {
       store?: {
         enabled?: boolean

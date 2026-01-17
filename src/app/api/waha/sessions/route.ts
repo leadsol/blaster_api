@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { name } = body
+    const { name, displayName } = body
 
     const response = await fetch(`${WAHA_API_URL}/api/sessions`, {
       method: 'POST',
@@ -80,6 +80,10 @@ export async function POST(request: NextRequest) {
         name,
         start: true,
         config: {
+          metadata: {
+            displayName: displayName || name,
+            createdAt: new Date().toISOString(),
+          },
           webhooks: [
             {
               url: `${getWebhookBaseUrl()}/api/waha/webhook`,

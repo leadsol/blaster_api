@@ -6,7 +6,7 @@ import { verifySignatureAppRouter } from '@upstash/qstash/nextjs'
 // Constants
 const BATCH_SIZE = 5 // Messages to schedule per batch call
 const BASE_MESSAGES_PER_DAY_PER_DEVICE = 90
-const VARIATION_BONUS = 10
+const EXEMPT_MESSAGES_PER_VARIATION = 10 // Extra messages per variation that don't count towards daily limit
 
 // This endpoint processes a batch of messages and schedules them via QStash
 async function handler(
@@ -37,6 +37,12 @@ async function handler(
       return NextResponse.json({ success: true, skipped: true, reason: `Campaign status is ${campaign.status}` })
     }
 
+    // Check if campaign is active (is_active toggle)
+    if (campaign.is_active === false) {
+      console.log(`[PROCESS-BATCH] Campaign ${campaignId} is deactivated (is_active: false)`)
+      return NextResponse.json({ success: true, skipped: true, reason: 'Campaign is deactivated' })
+    }
+
     // If campaign is draft/scheduled, update to running and set started_at
     if (campaign.status === 'draft' || campaign.status === 'scheduled') {
       await supabase
@@ -49,11 +55,13 @@ async function handler(
     }
 
     // Calculate daily limit
+    // Base limit is 90 messages per device
+    // Exempt messages from variations don't count towards the limit
     const messageVariations: string[] = campaign.message_variations || []
-    const variationCount = messageVariations.length > 1 ? messageVariations.length : 0
-    const extraVariationBonus = variationCount > 1 ? (variationCount - 1) * VARIATION_BONUS : 0
+    const variationCount = messageVariations.filter(v => v && v.trim().length > 0).length
+    const exemptMessages = variationCount > 1 ? (variationCount - 1) * EXEMPT_MESSAGES_PER_VARIATION : 0
     const deviceCount = campaign.multi_device && campaign.device_ids ? campaign.device_ids.length : 1
-    const maxMessagesPerDay = (BASE_MESSAGES_PER_DAY_PER_DEVICE + extraVariationBonus) * deviceCount
+    const baseLimit = BASE_MESSAGES_PER_DAY_PER_DEVICE * deviceCount
 
     // Count messages sent today
     const todayStart = new Date()
@@ -68,9 +76,13 @@ async function handler(
 
     const messagesTodayCount = sentToday || 0
 
-    // Check if daily limit reached
-    if (messagesTodayCount >= maxMessagesPerDay) {
-      console.log(`[PROCESS-BATCH] Daily limit reached (${messagesTodayCount}/${maxMessagesPerDay})`)
+    // Calculate effective count - subtract exempt messages from count
+    // This means the first X exempt messages "don't count" against the limit
+    const effectiveCount = Math.max(0, messagesTodayCount - exemptMessages)
+
+    // Check if daily limit reached (comparing effective count to base limit)
+    if (effectiveCount >= baseLimit) {
+      console.log(`[PROCESS-BATCH] Daily limit reached (sent: ${messagesTodayCount}, exempt: ${exemptMessages}, effective: ${effectiveCount}/${baseLimit})`)
 
       // Calculate time until midnight
       const now = new Date()
@@ -201,9 +213,37 @@ async function handler(
 
       console.log(`[PROCESS-BATCH] Scheduling message ${message.id} with ${delayFromNow}s total delay from now`)
 
-      const result = await scheduleMessage(campaignId, message.id, delayFromNow)
-      if (result) {
+      // Check if QStash is available for scheduling
+      if (isQStashConfigured()) {
+        const result = await scheduleMessage(campaignId, message.id, delayFromNow)
+        if (result) {
+          scheduledCount++
+        }
+      } else {
+        // FALLBACK: Direct send without QStash (localhost mode)
+        // Schedule direct HTTP call after delay using fire-and-forget
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+        const CRON_SECRET = process.env.CRON_SECRET
+
+        // Use setTimeout to delay the direct call
+        setTimeout(async () => {
+          try {
+            console.log(`[FALLBACK] Sending message ${message.id} now`)
+            await fetch(`${appUrl}/api/campaigns/${campaignId}/send-message`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-internal-secret': CRON_SECRET || ''
+              },
+              body: JSON.stringify({ messageId: message.id })
+            })
+          } catch (err) {
+            console.error(`[FALLBACK] Failed to send message ${message.id}:`, err)
+          }
+        }, delayFromNow * 1000)
+
         scheduledCount++
+        console.log(`[FALLBACK] Scheduled message ${message.id} with ${delayFromNow}s delay (setTimeout)`)
       }
     }
 
@@ -224,13 +264,61 @@ async function handler(
       const nextBatchDelay = lastScheduledDelay + 10
 
       console.log(`[PROCESS-BATCH] Scheduling next batch in ${nextBatchDelay}s (${remaining} messages remaining)`)
-      await scheduleNextBatch(campaignId, nextBatchDelay)
+
+      if (isQStashConfigured()) {
+        await scheduleNextBatch(campaignId, nextBatchDelay)
+      } else {
+        // FALLBACK: Schedule next batch directly
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+        const CRON_SECRET = process.env.CRON_SECRET
+
+        setTimeout(async () => {
+          try {
+            console.log(`[FALLBACK] Triggering next batch for campaign ${campaignId}`)
+            await fetch(`${appUrl}/api/campaigns/${campaignId}/process-batch`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-internal-secret': CRON_SECRET || ''
+              }
+            })
+          } catch (err) {
+            console.error(`[FALLBACK] Failed to trigger next batch:`, err)
+          }
+        }, nextBatchDelay * 1000)
+
+        console.log(`[FALLBACK] Scheduled next batch in ${nextBatchDelay}s (setTimeout)`)
+      }
     } else {
       // No more pending messages - schedule a final check to mark campaign as completed
       // This will run after the last message is sent
       const finalCheckDelay = lastScheduledDelay + 15
       console.log(`[PROCESS-BATCH] Scheduling final check in ${finalCheckDelay}s to mark campaign as completed`)
-      await scheduleNextBatch(campaignId, finalCheckDelay)
+
+      if (isQStashConfigured()) {
+        await scheduleNextBatch(campaignId, finalCheckDelay)
+      } else {
+        // FALLBACK: Schedule final check directly
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+        const CRON_SECRET = process.env.CRON_SECRET
+
+        setTimeout(async () => {
+          try {
+            console.log(`[FALLBACK] Final check for campaign ${campaignId}`)
+            await fetch(`${appUrl}/api/campaigns/${campaignId}/process-batch`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-internal-secret': CRON_SECRET || ''
+              }
+            })
+          } catch (err) {
+            console.error(`[FALLBACK] Failed to trigger final check:`, err)
+          }
+        }, finalCheckDelay * 1000)
+
+        console.log(`[FALLBACK] Scheduled final check in ${finalCheckDelay}s (setTimeout)`)
+      }
     }
 
     return NextResponse.json({

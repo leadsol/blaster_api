@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
     // Verify all connections belong to user and are connected
     const { data: connections, error: connError } = await supabase
       .from('connections')
-      .select('id, status, session_name')
+      .select('id, status, session_name, display_name')
       .in('id', connectionIds)
 
     if (connError || !connections || connections.length === 0) {
@@ -125,8 +125,27 @@ export async function POST(request: NextRequest) {
     const connectedDevices = connections.filter(c => c.status === 'connected')
     if (connectedDevices.length === 0) {
       return NextResponse.json({
-        error: 'No active WhatsApp connections. Please reconnect first.'
+        error: 'אין חיבורי WhatsApp פעילים. יש להתחבר מחדש.'
       }, { status: 400 })
+    }
+
+    // Check if any of the devices are busy in another running/paused campaign
+    for (const device of connectedDevices) {
+      const { data: busyCampaign } = await supabase
+        .from('campaigns')
+        .select('id, name, status')
+        .in('status', ['running', 'paused'])
+        .or(`connection_id.eq.${device.id},device_ids.cs.{${device.id}}`)
+        .limit(1)
+        .single()
+
+      if (busyCampaign) {
+        const deviceDisplayName = device.display_name || device.session_name
+        return NextResponse.json({
+          error: `המכשיר "${deviceDisplayName}" עסוק בקמפיין "${busyCampaign.name}" (${busyCampaign.status === 'running' ? 'פעיל' : 'מושהה'}). ניתן לשמור כטיוטה, אך לא ניתן לשגר עד שהקמפיין הקודם יסתיים או יבוטל.`,
+          canSaveAsDraft: true
+        }, { status: 409 })
+      }
     }
 
     // Use primary connection (first one) for the campaign record

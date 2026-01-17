@@ -88,7 +88,7 @@ function NewCampaignContent() {
   // Checkboxes
   const [hasExclusionList, setHasExclusionList] = useState(false)
   const [hasScheduling, setHasScheduling] = useState(false)
-  const [hasActiveHours, setHasActiveHours] = useState(true) // Default to true
+  const [hasActiveHours, setHasActiveHours] = useState(false)
   const [hasPause, setHasPause] = useState(false)
   const [createNewList, setCreateNewList] = useState(false)
   const [assignToExistingList, setAssignToExistingList] = useState(false)
@@ -1296,6 +1296,20 @@ function NewCampaignContent() {
       const data = await response.json()
 
       if (!response.ok) {
+        // If device is busy but can save as draft, offer that option
+        if (response.status === 409 && data.canSaveAsDraft) {
+          setLoading(false)
+          setConfirmPopup({
+            show: true,
+            message: data.error + '\n\nהאם לשמור כטיוטה?',
+            confirmText: 'שמור כטיוטה',
+            onConfirm: () => {
+              setConfirmPopup({ show: false, message: '', onConfirm: () => {} })
+              handleSaveDraft()
+            }
+          })
+          return
+        }
         setAlertPopup({ show: true, message: data.error || (isEditMode ? 'שגיאה בעדכון הקמפיין' : 'שגיאה ביצירת הקמפיין') })
         setLoading(false)
         return

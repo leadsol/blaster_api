@@ -19,6 +19,16 @@ function getQStashClient(): Client | null {
 
 export const isQStashConfigured = (): boolean => {
   const client = getQStashClient()
+  const appUrl = getAppUrl()
+
+  // QStash cannot call localhost - it needs a public URL
+  const isLocalhost = appUrl.includes('localhost') || appUrl.includes('127.0.0.1')
+
+  if (isLocalhost) {
+    console.log('[QSTASH] isQStashConfigured: false (localhost detected - using fallback)')
+    return false
+  }
+
   const configured = client !== null
   console.log('[QSTASH] isQStashConfigured:', configured)
   return configured

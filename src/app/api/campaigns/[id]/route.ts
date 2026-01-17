@@ -75,20 +75,20 @@ export async function PATCH(
     switch (action) {
       case 'pause':
         if (campaign.status !== 'running') {
-          return NextResponse.json({ error: 'Can only pause running campaigns' }, { status: 400 })
+          return NextResponse.json({ error: 'ניתן להשהות רק קמפיינים פעילים' }, { status: 400 })
         }
         newStatus = 'paused'
-        message = 'Campaign paused'
+        message = 'הקמפיין הושהה'
         // Save the time when campaign was paused for countdown calculation
         updateData.paused_at = new Date().toISOString()
         break
 
       case 'resume':
         if (campaign.status !== 'paused') {
-          return NextResponse.json({ error: 'Can only resume paused campaigns' }, { status: 400 })
+          return NextResponse.json({ error: 'ניתן להמשיך רק קמפיינים מושהים' }, { status: 400 })
         }
         newStatus = 'running'
-        message = 'Campaign resumed'
+        message = 'הקמפיין חודש'
 
         // Get the highest scheduled_delay_seconds from pending messages
         // This represents the remaining time needed to complete the campaign
@@ -144,10 +144,10 @@ export async function PATCH(
 
       case 'cancel':
         if (!['scheduled', 'running', 'paused'].includes(campaign.status)) {
-          return NextResponse.json({ error: 'Cannot cancel this campaign' }, { status: 400 })
+          return NextResponse.json({ error: 'לא ניתן לבטל קמפיין זה' }, { status: 400 })
         }
         newStatus = 'cancelled'
-        message = 'Campaign cancelled'
+        message = 'הקמפיין בוטל'
 
         // Also update all pending messages to cancelled
         const { error: messagesUpdateError } = await supabase
@@ -162,7 +162,7 @@ export async function PATCH(
         break
 
       default:
-        return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
+        return NextResponse.json({ error: 'פעולה לא חוקית' }, { status: 400 })
     }
 
     const { error: updateError } = await supabase
@@ -172,7 +172,7 @@ export async function PATCH(
 
     if (updateError) {
       console.error('Error updating campaign:', updateError)
-      return NextResponse.json({ error: 'Failed to update campaign' }, { status: 500 })
+      return NextResponse.json({ error: 'שגיאה בעדכון הקמפיין' }, { status: 500 })
     }
 
     return NextResponse.json({ success: true, message, status: newStatus })
@@ -277,7 +277,7 @@ export async function PUT(
     // Verify all connections belong to user and are connected
     const { data: connections, error: connError } = await supabase
       .from('connections')
-      .select('id, status, session_name')
+      .select('id, status, session_name, display_name')
       .in('id', connectionIds)
 
     if (connError || !connections || connections.length === 0) {
@@ -287,8 +287,28 @@ export async function PUT(
     const connectedDevices = connections.filter(c => c.status === 'connected')
     if (connectedDevices.length === 0) {
       return NextResponse.json({
-        error: 'No active WhatsApp connections. Please reconnect first.'
+        error: 'אין חיבורי WhatsApp פעילים. יש להתחבר מחדש.'
       }, { status: 400 })
+    }
+
+    // Check if any of the devices are busy in another running/paused campaign (excluding this campaign)
+    for (const device of connectedDevices) {
+      const { data: busyCampaign } = await supabase
+        .from('campaigns')
+        .select('id, name, status')
+        .in('status', ['running', 'paused'])
+        .neq('id', campaignId) // Exclude current campaign being edited
+        .or(`connection_id.eq.${device.id},device_ids.cs.{${device.id}}`)
+        .limit(1)
+        .single()
+
+      if (busyCampaign) {
+        const deviceDisplayName = device.display_name || device.session_name
+        return NextResponse.json({
+          error: `המכשיר "${deviceDisplayName}" עסוק בקמפיין "${busyCampaign.name}" (${busyCampaign.status === 'running' ? 'פעיל' : 'מושהה'}). לא ניתן לשגר את הקמפיין עד שהקמפיין הקודם יסתיים או יבוטל.`,
+          canSaveAsDraft: true
+        }, { status: 409 })
+      }
     }
 
     const primaryConnectionId = connectedDevices[0].id
@@ -339,7 +359,7 @@ export async function PUT(
 
     if (updateError) {
       console.error('Error updating campaign:', updateError)
-      return NextResponse.json({ error: 'Failed to update campaign' }, { status: 500 })
+      return NextResponse.json({ error: 'שגיאה בעדכון הקמפיין' }, { status: 500 })
     }
 
     // Delete old messages - first count how many exist
