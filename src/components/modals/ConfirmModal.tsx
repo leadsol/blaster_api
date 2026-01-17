@@ -1,5 +1,6 @@
 'use client'
 
+import { Loader2 } from 'lucide-react'
 import { Modal } from './Modal'
 
 interface ConfirmModalProps {
@@ -11,6 +12,7 @@ interface ConfirmModalProps {
   confirmText?: string
   cancelText?: string
   variant?: 'danger' | 'default'
+  loading?: boolean
 }
 
 export function ConfirmModal({
@@ -21,7 +23,8 @@ export function ConfirmModal({
   subtitle,
   confirmText = 'כן אני בטוח',
   cancelText = 'לא, תחזור אחורה',
-  variant = 'default'
+  variant = 'default',
+  loading = false
 }: ConfirmModalProps) {
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="md">
@@ -43,21 +46,25 @@ export function ConfirmModal({
           {/* Confirm button */}
           <button
             onClick={onConfirm}
+            disabled={loading}
             className={`
-              px-8 py-[11px] rounded-[10px] text-[12px] font-semibold transition-colors
+              px-8 py-[11px] rounded-[10px] text-[12px] font-semibold transition-colors flex items-center gap-2
+              ${loading ? 'opacity-70 cursor-not-allowed' : ''}
               ${variant === 'danger'
                 ? 'bg-white text-[#030733] hover:bg-[#CD1B1B] hover:text-white'
                 : 'bg-white text-[#030733] hover:bg-[#0043E0] hover:text-white'
               }
             `}
           >
+            {loading && <Loader2 className="w-4 h-4 animate-spin" />}
             {confirmText}
           </button>
 
           {/* Cancel button */}
           <button
             onClick={onClose}
-            className="text-[12px] font-light text-[#A8A8A8] hover:text-white transition-colors"
+            disabled={loading}
+            className={`text-[12px] font-light text-[#A8A8A8] hover:text-white transition-colors ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
             {cancelText}
           </button>

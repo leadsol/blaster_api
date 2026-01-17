@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useTheme } from '@/contexts/ThemeContext'
 import { ChevronLeft, Loader2, X, RefreshCw, Copy, CheckCircle, Download, AlertTriangle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -21,6 +21,7 @@ const getNextSessionName = async (): Promise<string> => {
 
 export default function SendQRConnectionPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { darkMode } = useTheme()
   const [displayName, setDisplayName] = useState('')
   const [savingName, setSavingName] = useState(false)
@@ -33,13 +34,29 @@ export default function SendQRConnectionPage() {
   const [showExitModal, setShowExitModal] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [showPendingSessionModal, setShowPendingSessionModal] = useState(false)
+  const [isExistingSession, setIsExistingSession] = useState(false)
   const hasCheckedRef = useRef(false)
 
-  // Check for pending sessions on mount - use ref to prevent double execution in React Strict Mode
+  // Check for existing session from query params or pending sessions on mount
   useEffect(() => {
     if (hasCheckedRef.current) return
     hasCheckedRef.current = true
-    checkPendingSessions()
+
+    // Check if we're reconnecting an existing session
+    const existingSession = searchParams.get('session')
+    const existingConnectionId = searchParams.get('connectionId')
+
+    if (existingSession && existingConnectionId) {
+      // Use existing session
+      setIsExistingSession(true)
+      setSessionName(existingSession)
+      setConnectionId(existingConnectionId)
+      setStep('loading')
+      loadExistingSession(existingSession, existingConnectionId)
+    } else {
+      // New session - check for pending
+      checkPendingSessions()
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -79,17 +96,22 @@ export default function SendQRConnectionPage() {
   const deleteConnectionAndExit = async () => {
     setDeleting(true)
     try {
-      // Delete from WAHA first
+      // Delete from WAHA first - always try if we have a session name
       if (sessionName) {
         console.log(`Deleting WAHA session: ${sessionName}`)
-        const wahaResponse = await fetch(`/api/waha/sessions/${sessionName}`, {
-          method: 'DELETE',
-        })
-        const wahaResult = await wahaResponse.json()
-        console.log(`WAHA delete response:`, wahaResponse.status, wahaResult)
+        try {
+          const wahaResponse = await fetch(`/api/waha/sessions/${sessionName}`, {
+            method: 'DELETE',
+          })
+          const wahaResult = await wahaResponse.json()
+          console.log(`WAHA delete response:`, wahaResponse.status, wahaResult)
+        } catch (wahaError) {
+          console.error('WAHA delete error:', wahaError)
+          // Continue even if WAHA delete fails
+        }
       }
 
-      // Delete from database
+      // Delete from database if we have a connection ID
       if (connectionId) {
         console.log(`Deleting connection from DB: ${connectionId}`)
         const supabase = createClient()
@@ -112,13 +134,35 @@ export default function SendQRConnectionPage() {
   }
 
   const handleBackClick = () => {
-    // If we have a connection in progress, show confirmation
-    if (connectionId && step !== 'success') {
+    // If this is an existing session, just go back without confirmation
+    if (isExistingSession) {
+      router.push('/connections')
+      return
+    }
+    // If we have a session or connection in progress (and not yet connected), show confirmation
+    if ((sessionName || connectionId) && step !== 'success') {
       setShowExitModal(true)
     } else {
       router.push('/connections/new')
     }
   }
+
+  // Warn user before leaving page during QR scan
+  useEffect(() => {
+    // Only show warning when we have an active session/connection and not yet connected
+    if ((!sessionName && !connectionId) || step === 'success' || step === 'checking' || isExistingSession) {
+      return
+    }
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      e.returnValue = 'אם תצא מדף זה החיבור יימחק'
+      return 'אם תצא מדף זה החיבור יימחק'
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [sessionName, connectionId, step, isExistingSession])
 
   // Listen for connection status changes via Supabase Realtime
   useEffect(() => {
@@ -187,7 +231,104 @@ export default function SendQRConnectionPage() {
   const refreshQR = async () => {
     if (!sessionName) return
     setQrCode('')
-    await fetchQRCode(sessionName)
+
+    // Check session status and restart if needed
+    try {
+      const statusResponse = await fetch(`/api/waha/sessions/${sessionName}/status`)
+      if (statusResponse.ok) {
+        const statusData = await statusResponse.json()
+        console.log('Session status on refresh:', statusData.status)
+
+        if (statusData.status === 'FAILED' || statusData.status === 'STOPPED') {
+          console.log('Session is stopped/failed, restarting...')
+          const restartResponse = await fetch(`/api/waha/sessions/${sessionName}/restart`, {
+            method: 'POST',
+          })
+          if (restartResponse.ok) {
+            console.log('Session restarted successfully, waiting for it to be ready...')
+            // Wait longer for session to be ready after restart
+            await new Promise(resolve => setTimeout(resolve, 5000))
+          }
+        }
+      } else if (statusResponse.status === 404) {
+        // Session doesn't exist in WAHA, need to recreate
+        console.log('Session not found in WAHA, recreating...')
+        const createResponse = await fetch('/api/waha/sessions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: sessionName }),
+        })
+        if (createResponse.ok) {
+          console.log('Session recreated, waiting for it to be ready...')
+          await new Promise(resolve => setTimeout(resolve, 5000))
+        }
+      }
+    } catch (error) {
+      console.log('Error checking session status:', error)
+    }
+
+    // Use fetchQRCode which already has retry logic
+    const success = await fetchQRCode(sessionName)
+    if (!success) {
+      setStep('error')
+      setErrorMessage('לא הצלחנו לקבל QR. נסה שוב.')
+    }
+  }
+
+  // Load existing session - check WAHA status and restart if needed
+  const loadExistingSession = async (session: string, connId: string) => {
+    try {
+      // First, fetch connection data to get display name
+      const supabase = createClient()
+      const { data: connection } = await supabase
+        .from('connections')
+        .select('display_name, status')
+        .eq('id', connId)
+        .single()
+
+      if (connection?.display_name) {
+        setDisplayName(connection.display_name)
+      }
+
+      // If already connected, go to success
+      if (connection?.status === 'connected') {
+        setStep('success')
+        return
+      }
+
+      // Check WAHA session status - if FAILED or STOPPED, restart it
+      const statusResponse = await fetch(`/api/waha/sessions/${session}/status`)
+      if (statusResponse.ok) {
+        const statusData = await statusResponse.json()
+        console.log('WAHA session status:', statusData.status)
+
+        if (statusData.status === 'FAILED' || statusData.status === 'STOPPED') {
+          console.log('Session is stopped/failed, restarting...')
+          const restartResponse = await fetch(`/api/waha/sessions/${session}/restart`, {
+            method: 'POST',
+          })
+          if (!restartResponse.ok) {
+            console.error('Failed to restart session')
+          } else {
+            console.log('Session restarted successfully')
+            await new Promise(resolve => setTimeout(resolve, 3000))
+          }
+        }
+      }
+
+      // Fetch QR code for existing session
+      const success = await fetchQRCode(session)
+      if (success) {
+        setStep('qr')
+      } else {
+        setStep('error')
+        setErrorMessage('לא ניתן להציג QR. נסה שוב.')
+      }
+    } catch (error) {
+      console.error('Error loading existing session:', error)
+      setStep('error')
+      setErrorMessage('שגיאה בטעינת החיבור')
+    }
   }
 
   const createConnection = async () => {
@@ -210,8 +351,10 @@ export default function SendQRConnectionPage() {
       })
 
       if (!wahaResponse.ok) {
-        const wahaData = await wahaResponse.json()
-        throw new Error(`Failed to create WAHA session: ${JSON.stringify(wahaData)}`)
+        console.log('Failed to create WAHA session')
+        setStep('error')
+        setErrorMessage('לא הצלחנו ליצור חיבור. נסה שוב.')
+        return
       }
 
       // Save to database without display name (will be set after connection)
@@ -234,9 +377,9 @@ export default function SendQRConnectionPage() {
         setErrorMessage('לא הצלחנו לקבל קוד QR. נסה שוב.')
       }
     } catch (error: any) {
-      console.error('Error creating connection:', error)
+      console.log('Error creating connection:', error)
       setStep('error')
-      setErrorMessage(error?.message || 'שגיאה ביצירת החיבור')
+      setErrorMessage('שגיאה ביצירת החיבור. נסה שוב.')
     }
   }
 
@@ -301,16 +444,8 @@ export default function SendQRConnectionPage() {
         display_name: displayName.trim()
       }).eq('id', connectionId)
 
-      // Also update WAHA metadata
-      try {
-        await fetch(`/api/waha/sessions/${sessionName}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ displayName: displayName.trim() }),
-        })
-      } catch (e) {
-        console.warn('Failed to update WAHA metadata:', e)
-      }
+      // Note: We no longer update WAHA metadata for new connections
+      // as it causes session restarts. Display name is stored only in our database.
 
       router.push('/connections')
     } catch (error) {
@@ -390,8 +525,13 @@ export default function SendQRConnectionPage() {
             </div>
 
             {/* Description */}
-            <p className={`text-[16px] text-center mb-8 ${darkMode ? 'text-gray-400' : 'text-[#030733]'}`}>
+            <p className={`text-[16px] text-center mb-4 ${darkMode ? 'text-gray-400' : 'text-[#030733]'}`}>
               שלח את הקוד למי שמחזיק בטלפון אותו תרצה לחבר
+            </p>
+
+            {/* Warning message */}
+            <p className={`text-[14px] text-center mb-8 ${darkMode ? 'text-yellow-400' : 'text-yellow-600'}`}>
+              * אם שלחת את הקוד לסריקה, המתן עד לחיבור מלא ואל תצא מדף זה
             </p>
 
             {/* Action buttons */}

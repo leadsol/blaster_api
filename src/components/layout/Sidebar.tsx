@@ -12,13 +12,7 @@ import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useSidebar } from '@/contexts/SidebarContext'
 import { useNavigationGuard } from '@/contexts/NavigationGuardContext'
-
-interface Connection {
-  id: string
-  session_name: string
-  display_name: string | null
-  status: string
-}
+import { useConnection } from '@/contexts/ConnectionContext'
 
 export function Sidebar() {
   const pathname = usePathname()
@@ -26,18 +20,16 @@ export function Sidebar() {
   const { toggleDarkMode } = useTheme()
   const { isCollapsed, toggleSidebar, isMobile, closeMobileSidebar } = useSidebar()
   const { checkNavigation, showConfirmDialog, confirmNavigation, cancelNavigation } = useNavigationGuard()
+  const { connections, selectedConnection, setSelectedConnection } = useConnection()
   const [showDropdown, setShowDropdown] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [showSupportModal, setShowSupportModal] = useState(false)
   const [showLogoutModal, setShowLogoutModal] = useState(false)
   const [userName, setUserName] = useState('')
-  const [connections, setConnections] = useState<Connection[]>([])
-  const [selectedConnection, setSelectedConnection] = useState<Connection | null>(null)
   const [unreadCount, setUnreadCount] = useState(0)
 
   useEffect(() => {
     loadUserData()
-    loadConnections()
     loadUnreadCount()
   }, [])
 
@@ -47,25 +39,6 @@ export function Sidebar() {
     if (user) {
       const fullName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'משתמש'
       setUserName(fullName)
-    }
-  }
-
-  const loadConnections = async () => {
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-
-    const { data } = await supabase
-      .from('connections')
-      .select('id, session_name, display_name, status')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-
-    if (data && data.length > 0) {
-      setConnections(data)
-      // Select the first connected one, or just the first one
-      const connected = data.find(c => c.status === 'connected') || data[0]
-      setSelectedConnection(connected)
     }
   }
 

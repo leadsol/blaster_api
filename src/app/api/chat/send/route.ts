@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { simpleRateLimit } from '@/lib/api-utils'
-
-const WAHA_API_URL = process.env.WAHA_API_URL || 'http://localhost:3001'
-const WAHA_API_KEY = process.env.WAHA_API_KEY
+import { waha } from '@/lib/waha'
 
 export async function POST(request: NextRequest) {
   // Rate limit check
@@ -43,44 +41,53 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Connection not active' }, { status: 400 })
     }
 
-    // Send message via WAHA API
-    const wahaEndpoint = mediaUrl
-      ? `${WAHA_API_URL}/api/sendImage`
-      : `${WAHA_API_URL}/api/sendText`
+    // Send message via WAHA API using the waha library
+    // Retry logic for transient WAHA errors
+    let wahaData
+    let lastError
+    const maxRetries = 3
 
-    const wahaPayload = mediaUrl
-      ? {
-          session: connection.session_name,
-          chatId,
-          file: { url: mediaUrl },
-          caption: content,
-        }
-      : {
-          session: connection.session_name,
-          chatId,
-          text: content,
-        }
-
-    const wahaHeaders: Record<string, string> = {
-      'Content-Type': 'application/json',
-    }
-    if (WAHA_API_KEY) {
-      wahaHeaders['X-Api-Key'] = WAHA_API_KEY
+    // Pre-fetch the chat to ensure it's loaded in WAHA's memory
+    // This can help avoid the "markedUnread" error caused by uninitialized chat state
+    try {
+      await waha.chats.get(connection.session_name, chatId)
+    } catch {
+      // Ignore errors - chat might not exist yet for new conversations
+      console.log('[SEND] Pre-fetching chat failed, continuing anyway')
     }
 
-    const wahaResponse = await fetch(wahaEndpoint, {
-      method: 'POST',
-      headers: wahaHeaders,
-      body: JSON.stringify(wahaPayload),
-    })
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        if (mediaUrl) {
+          wahaData = await waha.messages.sendImage({
+            session: connection.session_name,
+            chatId,
+            file: { url: mediaUrl },
+            caption: content,
+          })
+        } else {
+          wahaData = await waha.messages.sendText({
+            session: connection.session_name,
+            chatId,
+            text: content,
+          })
+        }
+        break // Success, exit retry loop
+      } catch (wahaError) {
+        lastError = wahaError
+        console.error(`WAHA API error (attempt ${attempt}/${maxRetries}):`, wahaError)
 
-    if (!wahaResponse.ok) {
-      const errorText = await wahaResponse.text()
-      console.error('WAHA API error:', errorText)
+        if (attempt < maxRetries) {
+          // Wait before retry (exponential backoff: 1s, 2s, 3s)
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt))
+        }
+      }
+    }
+
+    if (!wahaData) {
+      console.error('WAHA API failed after retries:', lastError)
       return NextResponse.json({ error: 'Failed to send message' }, { status: 500 })
     }
-
-    const wahaData = await wahaResponse.json()
 
     // Save message to database
     const { data: savedMessage, error: saveError } = await supabase

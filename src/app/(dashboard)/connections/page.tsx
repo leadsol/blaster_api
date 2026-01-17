@@ -121,6 +121,7 @@ export default function ConnectionsPage() {
   const [codeRequestPhone, setCodeRequestPhone] = useState('')
   const [requestingCode, setRequestingCode] = useState(false)
   const [disconnecting, setDisconnecting] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [savingName, setSavingName] = useState(false)
   const [connectionSuccess, setConnectionSuccess] = useState(false)
   const [connectionFailed, setConnectionFailed] = useState(false)
@@ -172,7 +173,7 @@ export default function ConnectionsPage() {
     loadConnections()
   }, [])
 
-  // Realtime subscription for connection status updates
+  // Realtime subscription for connection status updates - stable subscription
   useEffect(() => {
     const supabase = createClient()
 
@@ -187,7 +188,7 @@ export default function ConnectionsPage() {
           table: 'connections'
         },
         (payload) => {
-          console.log('Realtime update:', payload)
+          console.log('Realtime update received:', payload)
 
           if (payload.eventType === 'INSERT') {
             // New connection added - check if it already exists to prevent duplicates
@@ -210,6 +211,8 @@ export default function ConnectionsPage() {
           } else if (payload.eventType === 'UPDATE') {
             const updated = payload.new as Connection
             const old = payload.old as Partial<Connection>
+
+            console.log('Connection updated:', updated.id, 'status:', updated.status)
 
             // Update the connection in state
             setConnections(prev =>
@@ -247,23 +250,6 @@ export default function ConnectionsPage() {
                 message: `שם שונה מ-"${old.display_name}" ל-"${updated.display_name}"`
               }, ...prev].slice(0, 10))
             }
-
-            // If status changed while modal is open, show appropriate state
-            if ((step === 2 || showQRModal) && currentSessionId === updated.id) {
-              if (old.status !== 'connected' && updated.status === 'connected') {
-                // Show success state in the current modal
-                setConnectionSuccess(true)
-                setConnectionFailed(false)
-                setSuccessConnectionName(updated.display_name || 'החיבור')
-                setQrCode('')
-                setLinkCode('')
-              } else if (updated.status === 'disconnected' && old.status !== 'disconnected') {
-                // Connection failed/disconnected
-                setConnectionFailed(true)
-                setConnectionFailedMessage('החיבור נכשל. נסה שוב.')
-                setConnectionSuccess(false)
-              }
-            }
           } else if (payload.eventType === 'DELETE') {
             // Connection deleted
             const deletedConnection = payload.old as Connection
@@ -279,13 +265,33 @@ export default function ConnectionsPage() {
           }
         }
       )
-      .subscribe()
+      .subscribe((status, err) => {
+        console.log('Connections page realtime subscription status:', status, err)
+      })
 
     // Cleanup subscription on unmount
     return () => {
+      console.log('Cleaning up connections realtime subscription')
       supabase.removeChannel(channel)
     }
-  }, [step, showQRModal, currentSessionId])
+  }, []) // Empty deps - stable subscription
+
+  // Handle modal state changes for connection success/failure
+  useEffect(() => {
+    if (!currentSessionId) return
+
+    // Find current connection status
+    const currentConnection = connections.find(c => c.id === currentSessionId)
+    if (!currentConnection) return
+
+    if ((step === 2 || showQRModal) && currentConnection.status === 'connected') {
+      setConnectionSuccess(true)
+      setConnectionFailed(false)
+      setSuccessConnectionName(currentConnection.display_name || 'החיבור')
+      setQrCode('')
+      setLinkCode('')
+    }
+  }, [connections, currentSessionId, step, showQRModal])
 
   const loadConnections = async () => {
     setLoading(true)
@@ -606,6 +612,7 @@ export default function ConnectionsPage() {
   const confirmDeleteConnection = async () => {
     if (!connectionToDelete) return
 
+    setDeleting(true)
     try {
       // Delete from WAHA
       await fetch(`/api/waha/sessions/${connectionToDelete.session_name}`, {
@@ -625,6 +632,8 @@ export default function ConnectionsPage() {
         title: 'שגיאה במחיקת החיבור',
         type: 'error'
       })
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -705,16 +714,15 @@ export default function ConnectionsPage() {
         updated_at: now.toISOString(),
       }).eq('id', connectionToEdit.id)
 
-      // Also update WAHA metadata
-      try {
+      // Update WAHA metadata with display name
+      if (connectionToEdit.session_name) {
         await fetch(`/api/waha/sessions/${connectionToEdit.session_name}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ displayName: editDisplayName.trim() }),
+          body: JSON.stringify({
+            metadata: { displayName: editDisplayName.trim() }
+          }),
         })
-      } catch (wahaError) {
-        console.warn('Failed to update WAHA metadata:', wahaError)
-        // Continue anyway - the main DB update succeeded
       }
 
       setConnections(connections.map(c =>
@@ -866,7 +874,7 @@ export default function ConnectionsPage() {
                 </svg>
               </button>
             </div>
-            <div className="flex items-center gap-16">
+            <div className="flex items-center gap-8">
               <button
                 onClick={() => {
                   if (sortField === 'first_connected') {
@@ -876,7 +884,7 @@ export default function ConnectionsPage() {
                     setSortDirection('asc')
                   }
                 }}
-                className="text-sm font-normal flex items-center gap-1 whitespace-nowrap hover:opacity-70 transition-opacity"
+                className="text-sm font-normal w-[90px] flex items-center justify-center gap-1 whitespace-nowrap hover:opacity-70 transition-opacity"
               >
                 חיבור ראשוני
                 <svg width="13" height="13" viewBox="0 0 13 13" fill="none" xmlns="http://www.w3.org/2000/svg" className={`transition-transform ${sortField === 'first_connected' && sortDirection === 'desc' ? 'rotate-180' : ''}`}>
@@ -892,7 +900,7 @@ export default function ConnectionsPage() {
                     setSortDirection('asc')
                   }
                 }}
-                className="text-sm font-normal flex items-center gap-1 whitespace-nowrap hover:opacity-70 transition-opacity"
+                className="text-sm font-normal w-[120px] flex items-center justify-center gap-1 whitespace-nowrap hover:opacity-70 transition-opacity"
               >
                 עדכון אחרון
                 <svg width="13" height="13" viewBox="0 0 13 13" fill="none" xmlns="http://www.w3.org/2000/svg" className={`transition-transform ${sortField === 'last_update' && sortDirection === 'desc' ? 'rotate-180' : ''}`}>
@@ -908,7 +916,7 @@ export default function ConnectionsPage() {
                     setSortDirection('asc')
                   }
                 }}
-                className="text-sm font-normal flex items-center gap-1 hover:opacity-70 transition-opacity"
+                className="text-sm font-normal w-[110px] flex items-center justify-center gap-1 hover:opacity-70 transition-opacity"
               >
                 סטטוס
                 <svg width="13" height="13" viewBox="0 0 13 13" fill="none" xmlns="http://www.w3.org/2000/svg" className={`transition-transform ${sortField === 'status' && sortDirection === 'desc' ? 'rotate-180' : ''}`}>
@@ -988,8 +996,8 @@ export default function ConnectionsPage() {
                   </div>
 
                   {/* אמצע - תאריכים וסטטוס */}
-                  <div className="flex items-center gap-16">
-                    <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  <div className="flex items-center gap-8">
+                    <span className={`text-sm w-[90px] text-center ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                       {connection.first_connected_at
                         ? format(new Date(connection.first_connected_at), 'dd/MM/yyyy', { locale: he })
                         : connection.created_at
@@ -997,7 +1005,7 @@ export default function ConnectionsPage() {
                         : '-'}
                     </span>
 
-                    <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    <span className={`text-sm w-[120px] text-center ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                       {(() => {
                         const lastSeen = connection.last_seen_at ? new Date(connection.last_seen_at) : null
                         const lastUpdated = connection.updated_at ? new Date(connection.updated_at) : null
@@ -1010,7 +1018,7 @@ export default function ConnectionsPage() {
                       })()}
                     </span>
 
-                    <span className={`inline-flex items-center justify-center px-3 py-1.5 rounded text-sm font-semibold ${
+                    <span className={`inline-flex items-center justify-center w-[110px] px-2 py-1.5 rounded text-sm font-semibold ${
                       connection.status === 'connected'
                         ? 'bg-[#187C55] text-white'
                         : connection.status === 'disconnected'
@@ -1069,11 +1077,9 @@ export default function ConnectionsPage() {
                               {/* הצג QR - רק אם לא מחובר */}
                               {connection.status !== 'connected' && (
                                 <button
-                                  onClick={async () => {
-                                    setCurrentSessionId(connection.id)
-                                    await fetchQRCode(connection.session_name)
-                                    setShowQRModal(true)
+                                  onClick={() => {
                                     setOpenDropdownId(null)
+                                    router.push(`/connections/new/qr?session=${connection.session_name}&connectionId=${connection.id}`)
                                   }}
                                   className={`w-full flex items-center gap-3 px-4 py-2 text-sm ${darkMode ? 'text-gray-300 hover:bg-[#2a3f5f]' : 'text-gray-700 hover:bg-gray-100'}`}
                                 >
@@ -1086,14 +1092,27 @@ export default function ConnectionsPage() {
                               {connection.status !== 'connected' && (
                                 <button
                                   onClick={() => {
-                                    setCurrentSessionId(connection.id)
-                                    setConnectionToRequestCode(connection)
                                     setOpenDropdownId(null)
+                                    router.push(`/connections/new/code?session=${connection.session_name}&connectionId=${connection.id}`)
                                   }}
                                   className={`w-full flex items-center gap-3 px-4 py-2 text-sm ${darkMode ? 'text-gray-300 hover:bg-[#2a3f5f]' : 'text-gray-700 hover:bg-gray-100'}`}
                                 >
                                   <Link2 className="w-4 h-4" />
                                   בקש קוד
+                                </button>
+                              )}
+
+                              {/* שלח QR - רק אם לא מחובר */}
+                              {connection.status !== 'connected' && (
+                                <button
+                                  onClick={() => {
+                                    setOpenDropdownId(null)
+                                    router.push(`/connections/new/send?session=${connection.session_name}&connectionId=${connection.id}`)
+                                  }}
+                                  className={`w-full flex items-center gap-3 px-4 py-2 text-sm ${darkMode ? 'text-gray-300 hover:bg-[#2a3f5f]' : 'text-gray-700 hover:bg-gray-100'}`}
+                                >
+                                  <Send className="w-4 h-4" />
+                                  שלח QR
                                 </button>
                               )}
 
@@ -1228,11 +1247,9 @@ export default function ConnectionsPage() {
                                 {connection.status !== 'connected' && (
                                   <>
                                     <button
-                                      onClick={async () => {
-                                        setCurrentSessionId(connection.id)
-                                        await fetchQRCode(connection.session_name)
-                                        setShowQRModal(true)
+                                      onClick={() => {
                                         setOpenDropdownId(null)
+                                        router.push(`/connections/new/qr?session=${connection.session_name}&connectionId=${connection.id}`)
                                       }}
                                       className={`w-full flex items-center gap-3 px-4 py-2 text-sm ${darkMode ? 'text-gray-300 hover:bg-[#2a3f5f]' : 'text-gray-700 hover:bg-gray-100'}`}
                                     >
@@ -1241,14 +1258,23 @@ export default function ConnectionsPage() {
                                     </button>
                                     <button
                                       onClick={() => {
-                                        setCurrentSessionId(connection.id)
-                                        setConnectionToRequestCode(connection)
                                         setOpenDropdownId(null)
+                                        router.push(`/connections/new/code?session=${connection.session_name}&connectionId=${connection.id}`)
                                       }}
                                       className={`w-full flex items-center gap-3 px-4 py-2 text-sm ${darkMode ? 'text-gray-300 hover:bg-[#2a3f5f]' : 'text-gray-700 hover:bg-gray-100'}`}
                                     >
                                       <Link2 className="w-4 h-4" />
                                       בקש קוד
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setOpenDropdownId(null)
+                                        router.push(`/connections/new/send?session=${connection.session_name}&connectionId=${connection.id}`)
+                                      }}
+                                      className={`w-full flex items-center gap-3 px-4 py-2 text-sm ${darkMode ? 'text-gray-300 hover:bg-[#2a3f5f]' : 'text-gray-700 hover:bg-gray-100'}`}
+                                    >
+                                      <Send className="w-4 h-4" />
+                                      שלח QR
                                     </button>
                                   </>
                                 )}
@@ -1878,13 +1904,14 @@ export default function ConnectionsPage() {
       {/* Delete Connection Confirmation Modal */}
       <ConfirmModal
         isOpen={!!connectionToDelete}
-        onClose={() => setConnectionToDelete(null)}
+        onClose={() => !deleting && setConnectionToDelete(null)}
         onConfirm={confirmDeleteConnection}
         title={`האם למחוק את ${connectionToDelete?.display_name || 'החיבור'}?`}
         subtitle="פעולה זו תמחק את החיבור לצמיתות מהמערכת"
-        confirmText="כן, מחק"
+        confirmText={deleting ? 'מוחק...' : 'כן, מחק'}
         cancelText="לא, בטל"
         variant="danger"
+        loading={deleting}
       />
 
       {/* Alert Modal */}

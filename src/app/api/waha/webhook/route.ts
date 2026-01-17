@@ -67,7 +67,7 @@ interface MessageReactionPayload {
 }
 
 interface SessionStatusPayload {
-  status: 'STARTING' | 'SCAN_QR_CODE' | 'WORKING' | 'FAILED' | 'STOPPED'
+  status: 'STARTING' | 'SCAN_QR_CODE' | 'WORKING' | 'FAILED' | 'STOPPED' | 'AUTHENTICATED' | string
   me?: {
     id: string
     pushName?: string
@@ -404,21 +404,55 @@ async function handleSessionStatus(sessionName: string, payload: SessionStatusPa
   console.log('=== handleSessionStatus ===')
   console.log('Session:', sessionName)
   console.log('Payload:', JSON.stringify(payload, null, 2))
+  console.log('Raw WAHA status:', payload.status)
 
   const supabase = getSupabaseClient()
 
-  const status = payload.status === 'WORKING' ? 'connected' :
-                 payload.status === 'SCAN_QR_CODE' ? 'qr_pending' :
-                 payload.status === 'STARTING' ? 'connecting' : 'disconnected'
-
-  console.log('Mapped status:', status)
-
-  // First, get the current connection to check if display_name is already set
+  // First, get the current connection to check status and display_name
   const { data: existingConnection } = await supabase
     .from('connections')
-    .select('display_name, first_connected_at')
+    .select('display_name, first_connected_at, status')
     .eq('session_name', sessionName)
     .single()
+
+  console.log('Existing connection:', existingConnection)
+
+  // Map WAHA status to our status
+  // WAHA statuses: STARTING, SCAN_QR_CODE, WORKING, FAILED, STOPPED, AUTHENTICATED
+  // Important: Only mark as disconnected if explicitly FAILED or STOPPED
+  // Unknown statuses should be logged but not cause disconnection
+  let status: 'connected' | 'qr_pending' | 'connecting' | 'disconnected'
+
+  switch (payload.status) {
+    case 'WORKING':
+      status = 'connected'
+      break
+    case 'SCAN_QR_CODE':
+      status = 'qr_pending'
+      break
+    case 'STARTING':
+    case 'AUTHENTICATED': // After QR scan, before fully working
+      status = 'connecting'
+      break
+    case 'FAILED':
+      status = 'disconnected'
+      break
+    case 'STOPPED':
+      // If currently connected and we get STOPPED, it might be a temporary restart
+      // (e.g., from updating metadata). Only mark as disconnected if we weren't connected.
+      if (existingConnection?.status === 'connected') {
+        console.log('Ignoring STOPPED status because connection is currently connected (might be temporary restart)')
+        return // Don't update - it's probably a metadata update causing temporary restart
+      }
+      status = 'disconnected'
+      break
+    default:
+      // For unknown statuses, log but don't update to disconnected
+      console.log('Unknown WAHA status received:', payload.status, '- ignoring to prevent false disconnection')
+      return // Exit early, don't update database
+  }
+
+  console.log('Mapped status:', status)
 
   const updateData: Record<string, unknown> = {
     status,

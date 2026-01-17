@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useTheme } from '@/contexts/ThemeContext'
 import { ChevronLeft, Loader2, Copy, CheckCircle, X, AlertTriangle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -32,6 +32,7 @@ const getNextSessionName = async (): Promise<string> => {
 
 export default function CodeConnectionPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { darkMode } = useTheme()
   const [phoneNumber, setPhoneNumber] = useState('')
   const [step, setStep] = useState<'checking' | 'phone' | 'loading' | 'code' | 'success'>('checking')
@@ -47,13 +48,28 @@ export default function CodeConnectionPage() {
   const [showExitModal, setShowExitModal] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [showPendingSessionModal, setShowPendingSessionModal] = useState(false)
+  const [isExistingSession, setIsExistingSession] = useState(false)
   const hasCheckedRef = useRef(false)
 
-  // Check for pending sessions on mount - use ref to prevent double execution in React Strict Mode
+  // Check for existing session from query params or pending sessions on mount
   useEffect(() => {
     if (hasCheckedRef.current) return
     hasCheckedRef.current = true
-    checkPendingSessions()
+
+    // Check if we're reconnecting an existing session
+    const existingSession = searchParams.get('session')
+    const existingConnectionId = searchParams.get('connectionId')
+
+    if (existingSession && existingConnectionId) {
+      // Use existing session
+      setIsExistingSession(true)
+      setSessionName(existingSession)
+      setConnectionId(existingConnectionId)
+      loadExistingSession(existingConnectionId)
+    } else {
+      // New session - check for pending
+      checkPendingSessions()
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -84,6 +100,51 @@ export default function CodeConnectionPage() {
       setStep('phone')
     }
   }
+
+  // Load existing session - go directly to phone input
+  const loadExistingSession = async (connId: string) => {
+    try {
+      const supabase = createClient()
+      const { data: connection } = await supabase
+        .from('connections')
+        .select('display_name, status')
+        .eq('id', connId)
+        .single()
+
+      if (connection?.display_name) {
+        setDisplayName(connection.display_name)
+      }
+
+      // If already connected, go to success
+      if (connection?.status === 'connected') {
+        setStep('success')
+        return
+      }
+
+      // Go to phone input step
+      setStep('phone')
+    } catch (error) {
+      console.error('Error loading existing session:', error)
+      setStep('phone')
+    }
+  }
+
+  // Warn user before leaving page during code verification
+  useEffect(() => {
+    // Only show warning when we have an active session/connection and not yet connected
+    if ((!sessionName && !connectionId) || step === 'success' || step === 'checking' || step === 'phone' || isExistingSession) {
+      return
+    }
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      e.returnValue = 'אם תצא מדף זה החיבור יימחק'
+      return 'אם תצא מדף זה החיבור יימחק'
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [sessionName, connectionId, step, isExistingSession])
 
   // Listen for connection status changes via Supabase Realtime
   useEffect(() => {
@@ -163,16 +224,16 @@ export default function CodeConnectionPage() {
         return fetchLinkCode(session, retries - 1)
       }
 
-      console.error('Failed to get link code after retries:', data)
-      setErrorMessage(data.details || data.error || 'לא הצלחנו לקבל קוד מ-WhatsApp. נסה שוב.')
+      console.log('Failed to get link code after retries:', data)
+      setErrorMessage('לא הצלחנו לקבל קוד מ-WhatsApp. נסה שוב.')
       return false
     } catch (error) {
-      console.error('Error fetching link code:', error)
+      console.log('Error fetching link code:', error)
       if (retries > 0) {
         await new Promise(resolve => setTimeout(resolve, 3000))
         return fetchLinkCode(session, retries - 1)
       }
-      setErrorMessage('אירעה שגיאה בתקשורת עם השרת')
+      setErrorMessage('אירעה שגיאה בתקשורת עם השרת. נסה שוב.')
       return false
     }
   }
@@ -190,33 +251,44 @@ export default function CodeConnectionPage() {
         return
       }
 
-      const wahaSessionName = await getNextSessionName()
-      setSessionName(wahaSessionName)
+      let wahaSessionName = sessionName
+      let connId = connectionId
 
-      // Create session in WAHA
-      const wahaResponse = await fetch('/api/waha/sessions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: wahaSessionName }),
-      })
+      // If this is a new session (not existing), create it
+      if (!isExistingSession) {
+        wahaSessionName = await getNextSessionName()
+        setSessionName(wahaSessionName)
 
-      if (!wahaResponse.ok) {
-        const wahaData = await wahaResponse.json()
-        throw new Error(`Failed to create WAHA session: ${JSON.stringify(wahaData)}`)
+        // Create session in WAHA
+        const wahaResponse = await fetch('/api/waha/sessions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: wahaSessionName }),
+        })
+
+        if (!wahaResponse.ok) {
+          console.log('Failed to create WAHA session')
+          setErrorMessage('לא הצלחנו ליצור חיבור. נסה שוב.')
+          setStep('phone')
+          setShowErrorModal(true)
+          setLoading(false)
+          return
+        }
+
+        // Save to database without display name
+        const { data, error } = await supabase.from('connections').insert({
+          user_id: user.id,
+          session_name: wahaSessionName,
+          status: 'qr_pending',
+        }).select().single()
+
+        if (error) throw error
+
+        connId = data.id
+        setConnectionId(connId)
       }
 
-      // Save to database without display name
-      const { data, error } = await supabase.from('connections').insert({
-        user_id: user.id,
-        session_name: wahaSessionName,
-        status: 'qr_pending',
-      }).select().single()
-
-      if (error) throw error
-
-      setConnectionId(data.id)
-
-      // Fetch link code
+      // Fetch link code (for both new and existing sessions)
       const codeSuccess = await fetchLinkCode(wahaSessionName)
       if (codeSuccess) {
         setStep('code')
@@ -225,9 +297,9 @@ export default function CodeConnectionPage() {
         setShowErrorModal(true)
       }
     } catch (error: any) {
-      console.error('Error creating connection:', error)
+      console.log('Error creating connection:', error)
       setStep('phone')
-      setErrorMessage(error?.message || 'שגיאה ביצירת החיבור')
+      setErrorMessage('שגיאה ביצירת החיבור. נסה שוב.')
       setShowErrorModal(true)
     } finally {
       setLoading(false)
@@ -237,17 +309,22 @@ export default function CodeConnectionPage() {
   const deleteConnectionAndExit = async () => {
     setDeleting(true)
     try {
-      // Delete from WAHA first
+      // Delete from WAHA first - always try if we have a session name
       if (sessionName) {
         console.log(`Deleting WAHA session: ${sessionName}`)
-        const wahaResponse = await fetch(`/api/waha/sessions/${sessionName}`, {
-          method: 'DELETE',
-        })
-        const wahaResult = await wahaResponse.json()
-        console.log(`WAHA delete response:`, wahaResponse.status, wahaResult)
+        try {
+          const wahaResponse = await fetch(`/api/waha/sessions/${sessionName}`, {
+            method: 'DELETE',
+          })
+          const wahaResult = await wahaResponse.json()
+          console.log(`WAHA delete response:`, wahaResponse.status, wahaResult)
+        } catch (wahaError) {
+          console.error('WAHA delete error:', wahaError)
+          // Continue even if WAHA delete fails
+        }
       }
 
-      // Delete from database
+      // Delete from database if we have a connection ID
       if (connectionId) {
         console.log(`Deleting connection from DB: ${connectionId}`)
         const supabase = createClient()
@@ -269,7 +346,13 @@ export default function CodeConnectionPage() {
   }
 
   const handleBackClick = () => {
-    if (connectionId && step !== 'success') {
+    // If this is an existing session, just go back without confirmation
+    if (isExistingSession) {
+      router.push('/connections')
+      return
+    }
+    // If we have a session or connection in progress (and not yet connected), show confirmation
+    if ((sessionName || connectionId) && step !== 'success') {
       setShowExitModal(true)
     } else {
       router.push('/connections/new')
@@ -317,15 +400,8 @@ export default function CodeConnectionPage() {
         display_name: displayName.trim()
       }).eq('id', connectionId)
 
-      try {
-        await fetch(`/api/waha/sessions/${sessionName}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ displayName: displayName.trim() }),
-        })
-      } catch (e) {
-        console.warn('Failed to update WAHA metadata:', e)
-      }
+      // Note: We no longer update WAHA metadata for new connections
+      // as it causes session restarts. Display name is stored only in our database.
 
       router.push('/connections')
     } catch (error) {
@@ -441,8 +517,13 @@ export default function CodeConnectionPage() {
             </div>
 
             {/* Description */}
-            <p className={`text-[16px] text-center mb-8 ${darkMode ? 'text-gray-400' : 'text-[#030733]'}`}>
+            <p className={`text-[16px] text-center mb-4 ${darkMode ? 'text-gray-400' : 'text-[#030733]'}`}>
               שלח את הקוד למי שמחזיק בטלפון אותו תרצה לחבר
+            </p>
+
+            {/* Warning message */}
+            <p className={`text-[14px] text-center mb-8 ${darkMode ? 'text-yellow-400' : 'text-yellow-600'}`}>
+              * אם הכנסת את קוד האימות, המתן עד לחיבור מלא ואל תצא מדף זה
             </p>
 
             {/* Copy Button */}
