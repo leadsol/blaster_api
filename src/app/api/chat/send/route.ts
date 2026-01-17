@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
         user_id: user.id,
         connection_id: connectionId,
         chat_id: chatId,
-        waha_message_id: wahaData.id || wahaData.key?.id || `local_${Date.now()}`,
+        waha_message_id: wahaData.id || (wahaData as any).key?.id || `local_${Date.now()}`,
         content,
         media_url: mediaUrl || null,
         media_type: mediaType || null,
