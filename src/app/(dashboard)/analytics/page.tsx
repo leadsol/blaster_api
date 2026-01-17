@@ -388,7 +388,7 @@ function AnalyticsContent() {
     // Load campaigns with connection details
     const { data: campaignsData, error } = await supabase
       .from('campaigns')
-      .select('id, name, status, sent_count, delivered_count, read_count, reply_count, failed_count, total_recipients, scheduled_at, started_at, paused_at, estimated_duration, connection_id, device_ids, multi_device, message_variations, respect_active_hours, active_hours_start, active_hours_end')
+      .select('id, name, status, sent_count, delivered_count, read_count, reply_count, failed_count, total_recipients, scheduled_at, started_at, paused_at, estimated_duration, connection_id, device_ids, multi_device, message_variations, respect_active_hours, active_hours_start, active_hours_end, is_active')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
 
