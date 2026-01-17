@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useTheme } from '@/contexts/ThemeContext'
 import { ChevronLeft, Loader2, Copy, CheckCircle, X, AlertTriangle } from 'lucide-react'
@@ -30,7 +30,7 @@ const getNextSessionName = async (): Promise<string> => {
   return `LEADSOL${data}`
 }
 
-export default function CodeConnectionPage() {
+function CodeConnectionPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { darkMode } = useTheme()
@@ -744,5 +744,17 @@ export default function CodeConnectionPage() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function CodeConnectionPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-[#F2F3F8] flex items-center justify-center">
+        <Loader2 className="w-16 h-16 animate-spin text-[#030733]" />
+      </div>
+    }>
+      <CodeConnectionPageContent />
+    </Suspense>
   )
 }
