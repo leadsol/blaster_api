@@ -76,13 +76,15 @@ export default function QRConnectionPage() {
     }
   }
 
-  // Listen for connection status changes
+  // Listen for connection status changes via Supabase Realtime
   useEffect(() => {
     if (!connectionId) return
 
+    console.log('Setting up realtime subscription for connection:', connectionId)
     const supabase = createClient()
+
     const channel = supabase
-      .channel('qr-connection-status')
+      .channel(`connection-${connectionId}`)
       .on(
         'postgres_changes',
         {
@@ -92,6 +94,7 @@ export default function QRConnectionPage() {
           filter: `id=eq.${connectionId}`
         },
         (payload) => {
+          console.log('Realtime update received:', payload)
           const updated = payload.new as { status: string }
           if (updated.status === 'connected') {
             setStep('success')
@@ -101,9 +104,12 @@ export default function QRConnectionPage() {
           }
         }
       )
-      .subscribe()
+      .subscribe((status, err) => {
+        console.log('Realtime subscription status:', status, err)
+      })
 
     return () => {
+      console.log('Cleaning up realtime subscription')
       supabase.removeChannel(channel)
     }
   }, [connectionId, step])

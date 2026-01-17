@@ -85,13 +85,15 @@ export default function CodeConnectionPage() {
     }
   }
 
-  // Listen for connection status changes
+  // Listen for connection status changes via Supabase Realtime
   useEffect(() => {
     if (!connectionId) return
 
+    console.log('Setting up realtime subscription for connection:', connectionId)
     const supabase = createClient()
+
     const channel = supabase
-      .channel('code-connection-status')
+      .channel(`connection-${connectionId}`)
       .on(
         'postgres_changes',
         {
@@ -101,6 +103,7 @@ export default function CodeConnectionPage() {
           filter: `id=eq.${connectionId}`
         },
         (payload) => {
+          console.log('Realtime update received:', payload)
           const updated = payload.new as { status: string }
           if (updated.status === 'connected') {
             setStep('success')
@@ -110,9 +113,12 @@ export default function CodeConnectionPage() {
           }
         }
       )
-      .subscribe()
+      .subscribe((status, err) => {
+        console.log('Realtime subscription status:', status, err)
+      })
 
     return () => {
+      console.log('Cleaning up realtime subscription')
       supabase.removeChannel(channel)
     }
   }, [connectionId, step])

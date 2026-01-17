@@ -401,11 +401,17 @@ async function handleMessageWaiting(sessionName: string, payload: MessagePayload
 // ============================================================================
 
 async function handleSessionStatus(sessionName: string, payload: SessionStatusPayload) {
+  console.log('=== handleSessionStatus ===')
+  console.log('Session:', sessionName)
+  console.log('Payload:', JSON.stringify(payload, null, 2))
+
   const supabase = getSupabaseClient()
 
   const status = payload.status === 'WORKING' ? 'connected' :
                  payload.status === 'SCAN_QR_CODE' ? 'qr_pending' :
                  payload.status === 'STARTING' ? 'connecting' : 'disconnected'
+
+  console.log('Mapped status:', status)
 
   // First, get the current connection to check if display_name is already set
   const { data: existingConnection } = await supabase
@@ -433,10 +439,18 @@ async function handleSessionStatus(sessionName: string, payload: SessionStatusPa
     }
   }
 
-  await supabase
+  console.log('Updating connection with data:', updateData)
+
+  const { data: updateResult, error: updateError } = await supabase
     .from('connections')
     .update(updateData)
     .eq('session_name', sessionName)
+    .select()
+
+  console.log('Update result:', updateResult)
+  if (updateError) {
+    console.error('Update error:', updateError)
+  }
 }
 
 // ============================================================================
