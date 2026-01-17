@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
     // Fetch chats directly from WAHA
     const chats = await waha.chats.list(connection.session_name, {
       limit: 100,
-      sortBy: 'conversationTimestamp',
+      sortBy: 'timestamp' as any,
       sortOrder: 'desc'
     })
 
