@@ -202,7 +202,7 @@ export default function ConnectionsPage() {
             // Add alert for new connection
             setConnectionAlerts(prev => [{
               id: `${newConnection.id}-${Date.now()}`,
-              type: 'created',
+              type: 'created' as const,
               connectionName: newConnection.display_name || 'חיבור חדש',
               timestamp: new Date(),
               message: `חיבור "${newConnection.display_name || 'חיבור חדש'}" נוצר`
@@ -221,7 +221,7 @@ export default function ConnectionsPage() {
               if (updated.status === 'connected') {
                 setConnectionAlerts(prev => [{
                   id: `${updated.id}-${Date.now()}`,
-                  type: 'connected',
+                  type: 'connected' as const,
                   connectionName: updated.display_name || 'חיבור',
                   timestamp: new Date(),
                   message: `"${updated.display_name || 'החיבור'}" התחבר בהצלחה`
@@ -229,7 +229,7 @@ export default function ConnectionsPage() {
               } else if (updated.status === 'disconnected') {
                 setConnectionAlerts(prev => [{
                   id: `${updated.id}-${Date.now()}`,
-                  type: 'disconnected',
+                  type: 'disconnected' as const,
                   connectionName: updated.display_name || 'חיבור',
                   timestamp: new Date(),
                   message: `"${updated.display_name || 'החיבור'}" התנתק`
@@ -241,7 +241,7 @@ export default function ConnectionsPage() {
             if (old.display_name !== updated.display_name && old.display_name) {
               setConnectionAlerts(prev => [{
                 id: `${updated.id}-${Date.now()}`,
-                type: 'name_changed',
+                type: 'name_changed' as const,
                 connectionName: updated.display_name || 'חיבור',
                 timestamp: new Date(),
                 message: `שם שונה מ-"${old.display_name}" ל-"${updated.display_name}"`
@@ -271,7 +271,7 @@ export default function ConnectionsPage() {
             // Add alert for deleted connection
             setConnectionAlerts(prev => [{
               id: `${deletedConnection.id}-${Date.now()}`,
-              type: 'deleted',
+              type: 'deleted' as const,
               connectionName: deletedConnection.display_name || 'חיבור',
               timestamp: new Date(),
               message: `"${deletedConnection.display_name || 'חיבור'}" נמחק`
@@ -727,7 +727,7 @@ export default function ConnectionsPage() {
       if (oldName !== newName) {
         setConnectionAlerts(prev => [{
           id: `name-${connectionToEdit.id}-${Date.now()}`,
-          type: 'name_changed',
+          type: 'name_changed' as const,
           connectionName: newName,
           timestamp: now,
           message: `שם החיבור שונה מ-"${oldName}" ל-"${newName}"`
