@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
     })
 
     // Format chats for frontend
-    const formattedChats = chats.map(chat => {
+    const formattedChats = chats.map((chat: any) => {
       // Handle chat.id - could be string or object with _serialized
       const chatId = typeof chat.id === 'string' ? chat.id : (chat.id?._serialized || chat.id?.user || String(chat.id))
 
