@@ -42,7 +42,7 @@ interface Recipient {
   id: string
   phone: string
   name?: string
-  status: 'pending' | 'sent' | 'delivered' | 'read' | 'replied' | 'failed' | 'cancelled'
+  status: 'pending' | 'sent' | 'delivered' | 'read' | 'replied' | 'failed' | 'cancelled' | 'blacklisted'
   sent_at?: string
   failed_at?: string
   created_at?: string
@@ -1273,15 +1273,48 @@ function AnalyticsContent() {
                       : 'כל המכשירים'
                     }
                   </p>
-                  {/* Daily limit info */}
-                  {selectedConnection && dailyLimit > 0 && (
-                    <p className={`text-[10px] sm:text-[11px] md:text-[12px] xl:text-[13px] mt-0.5 sm:mt-1 ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
-                      לימיט יומי: {dailyMessageCount}/{dailyLimit} הודעות
-                      {dailyMessageCount >= dailyLimit && (
-                        <span className="text-orange-500 mr-1">(הגעת ללימיט)</span>
-                      )}
-                    </p>
-                  )}
+                  {/* Daily limit stats - נשלחו / נשארו / חריגה */}
+                  {(() => {
+                    // Calculate stats based on selection
+                    let totalSent = 0
+                    let totalLimit = 0
+                    let totalExemptAllowed = 0
+
+                    if (selectedConnection) {
+                      // Single device selected
+                      totalSent = dailyMessageCount
+                      totalLimit = dailyLimit
+                      // Find exempt allowed for this device
+                      const deviceStats = allDevicesStats.find(d => d.id === selectedConnection.id)
+                      totalExemptAllowed = deviceStats?.exemptAllowed || 0
+                    } else {
+                      // All devices - sum up all stats
+                      totalSent = allDevicesStats.reduce((sum, d) => sum + d.sentToday, 0)
+                      totalLimit = allDevicesStats.reduce((sum, d) => sum + d.limit, 0)
+                      totalExemptAllowed = allDevicesStats.reduce((sum, d) => sum + d.exemptAllowed, 0)
+                    }
+
+                    const remaining = totalLimit - Math.min(totalSent, totalLimit)
+                    const exemptUsed = Math.max(0, totalSent - totalLimit)
+
+                    if (totalLimit === 0 && allDevicesStats.length === 0) return null
+
+                    return (
+                      <div className={`flex items-center gap-3 mt-1 text-[10px] sm:text-[11px] md:text-[12px] xl:text-[13px]`}>
+                        <span className={darkMode ? 'text-gray-400' : 'text-[#595C7A]'}>
+                          נשלחו: <span className={`font-medium ${darkMode ? 'text-white' : 'text-[#030733]'}`}>{totalSent}</span>
+                        </span>
+                        <span className={darkMode ? 'text-gray-400' : 'text-[#595C7A]'}>
+                          נשארו: <span className={`font-medium ${remaining <= 0 ? 'text-red-500' : darkMode ? 'text-white' : 'text-[#030733]'}`}>{remaining}</span>
+                        </span>
+                        {exemptUsed > 0 && (
+                          <span className={darkMode ? 'text-gray-400' : 'text-[#595C7A]'}>
+                            חריגה: <span className="font-medium text-orange-500">{exemptUsed}</span>
+                          </span>
+                        )}
+                      </div>
+                    )
+                  })()}
                 </div>
 
                 {/* Dropdown */}
@@ -1334,115 +1367,6 @@ function AnalyticsContent() {
               </div>
             </div>
 
-            {/* Device Analytics - BELOW CONNECTION SELECTOR */}
-            {allDevicesStats.length > 0 && (
-              <div className={`${darkMode ? 'bg-[#142241]' : 'bg-white'} rounded-[10px] px-5 py-4 relative`}>
-                <div className="flex items-center justify-between gap-4">
-                  {/* Left side - Device selector */}
-                  <div className="flex items-center gap-2 relative">
-                    <button
-                      onClick={() => setShowDeviceStatsDropdown(!showDeviceStatsDropdown)}
-                      className="flex items-center gap-1"
-                    >
-                      <ChevronDown className={`${darkMode ? 'text-white' : 'text-[#030733]'} transition-transform ${showDeviceStatsDropdown ? 'rotate-180' : ''}`} size={16} />
-                    </button>
-                    <span className={`text-[13px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
-                      לימיט יומי ({selectedDevices.size} נבחרו)
-                    </span>
-
-                    {/* Dropdown for device selection - SMALL POPUP BELOW BUTTON */}
-                    {showDeviceStatsDropdown && (
-                      <div className={`absolute right-0 top-[30px] w-[300px] max-h-[200px] overflow-y-auto ${darkMode ? 'bg-[#1a2d4a]' : 'bg-white'} p-2 rounded-lg shadow-xl border ${darkMode ? 'border-[#2a3f5f]' : 'border-gray-200'} z-20`}>
-                        {/* Select All */}
-                        <label className={`flex items-center gap-2 p-2 rounded cursor-pointer hover:${darkMode ? 'bg-[#142241]' : 'bg-gray-50'}`}>
-                          <input
-                            type="checkbox"
-                            checked={selectedDevices.size === allDevicesStats.length}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setSelectedDevices(new Set(allDevicesStats.map(d => d.id)))
-                              } else {
-                                setSelectedDevices(new Set())
-                              }
-                            }}
-                            className="w-4 h-4"
-                          />
-                          <span className={`text-[12px] font-medium ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
-                            בחר הכל
-                          </span>
-                        </label>
-
-                        {/* Individual devices */}
-                        {allDevicesStats.map((device) => (
-                          <label
-                            key={device.id}
-                            className={`flex items-center gap-2 p-2 rounded cursor-pointer hover:${darkMode ? 'bg-[#142241]' : 'bg-gray-50'}`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={selectedDevices.has(device.id)}
-                              onChange={(e) => {
-                                const newSet = new Set(selectedDevices)
-                                if (e.target.checked) {
-                                  newSet.add(device.id)
-                                } else {
-                                  newSet.delete(device.id)
-                                }
-                                setSelectedDevices(newSet)
-                              }}
-                              className="w-4 h-4"
-                            />
-                            <div className={`w-2 h-2 rounded-full ${device.status === 'connected' ? 'bg-green-500' : 'bg-red-500'}`} />
-                            <span className={`text-[11px] ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
-                              {device.name}
-                            </span>
-                          </label>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Right side - Stats inline */}
-                  {selectedDevices.size > 0 && (() => {
-                    const selectedStats = allDevicesStats.filter(d => selectedDevices.has(d.id))
-                    const totalSent = selectedStats.reduce((sum, d) => sum + d.sentToday, 0)
-                    const totalLimit = selectedStats.reduce((sum, d) => sum + d.limit, 0)
-                    const totalExemptAllowed = selectedStats.reduce((sum, d) => sum + d.exemptAllowed, 0)
-                    // Calculate how many "exempt" messages were used (sent beyond base limit)
-                    const exemptUsed = Math.max(0, totalSent - totalLimit)
-                    const remaining = totalLimit - Math.min(totalSent, totalLimit)
-
-                    return (
-                      <div className="flex items-center gap-3 text-right">
-                        <div>
-                          <span className={`text-[12px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>נשלחו: </span>
-                          <span className={`text-[14px] font-medium ${darkMode ? 'text-white' : 'text-[#030733]'}`}>{totalSent}</span>
-                        </div>
-                        <div className={`w-px h-4 ${darkMode ? 'bg-[#2a3f5f]' : 'bg-gray-300'}`} />
-                        <div>
-                          <span className={`text-[12px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>נשארו: </span>
-                          <span className={`text-[14px] font-medium ${remaining <= 0 ? 'text-red-500' : darkMode ? 'text-white' : 'text-[#030733]'}`}>
-                            {remaining}
-                          </span>
-                        </div>
-                        {/* Show "חריגה" only if user exceeded base limit */}
-                        {exemptUsed > 0 && (
-                          <>
-                            <div className={`w-px h-4 ${darkMode ? 'bg-[#2a3f5f]' : 'bg-gray-300'}`} />
-                            <div>
-                              <span className={`text-[12px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>חריגה: </span>
-                              <span className={`text-[14px] font-medium text-orange-500`}>
-                                {exemptUsed}/{totalExemptAllowed}
-                              </span>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    )
-                  })()}
-                </div>
-              </div>
-            )}
 
             {/* Filter Tabs - RESPONSIVE */}
             <div className="flex gap-1 sm:gap-1.5 md:gap-2 flex-wrap">
@@ -1748,6 +1672,7 @@ function AnalyticsContent() {
                                 recipient.status === 'read' ? 'bg-[#0043E0] text-white' :
                                 recipient.status === 'replied' ? 'bg-[#8B5CF6] text-white' :
                                 recipient.status === 'failed' ? 'bg-[#CD1B1B] text-white' :
+                                recipient.status === 'blacklisted' ? 'bg-[#6B7280] text-white' :
                                 recipient.status === 'cancelled' ? 'bg-[#6B7280] text-white' :
                                 recipient.status === 'pending' ? (darkMode ? 'bg-gray-600 text-gray-300' : 'bg-gray-300 text-gray-700') :
                                 'bg-[#0043E0] text-white'
@@ -1757,6 +1682,7 @@ function AnalyticsContent() {
                                  recipient.status === 'read' ? 'נקרא' :
                                  recipient.status === 'replied' ? 'הגיב' :
                                  recipient.status === 'failed' ? 'נכשל' :
+                                 recipient.status === 'blacklisted' ? 'רשימה שחורה' :
                                  recipient.status === 'cancelled' ? 'בוטל' :
                                  recipient.status === 'pending' ? 'ממתין' :
                                  recipient.status}
@@ -2083,6 +2009,7 @@ function AnalyticsContent() {
                     selectedRecipient.status === 'read' ? 'bg-[#0043E0] text-white' :
                     selectedRecipient.status === 'replied' ? 'bg-[#8B5CF6] text-white' :
                     selectedRecipient.status === 'failed' ? 'bg-[#CD1B1B] text-white' :
+                    selectedRecipient.status === 'blacklisted' ? 'bg-[#6B7280] text-white' :
                     selectedRecipient.status === 'cancelled' ? 'bg-[#6B7280] text-white' :
                     selectedRecipient.status === 'pending' ? (darkMode ? 'bg-gray-600 text-gray-300' : 'bg-gray-300 text-gray-700') :
                     'bg-[#0043E0] text-white'
@@ -2092,6 +2019,7 @@ function AnalyticsContent() {
                      selectedRecipient.status === 'read' ? 'נקרא' :
                      selectedRecipient.status === 'replied' ? 'הגיב' :
                      selectedRecipient.status === 'failed' ? 'נכשל' :
+                     selectedRecipient.status === 'blacklisted' ? 'רשימה שחורה' :
                      selectedRecipient.status === 'cancelled' ? 'בוטל' :
                      selectedRecipient.status === 'pending' ? 'ממתין' :
                      selectedRecipient.status}

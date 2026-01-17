@@ -36,7 +36,9 @@ export async function GET(
       if (contentType?.includes('image')) {
         const buffer = await response.arrayBuffer()
         const base64 = Buffer.from(buffer).toString('base64')
-        return NextResponse.json({ qr: base64 })
+        // Return with proper data URI prefix for img src
+        const mimeType = contentType.split(';')[0] || 'image/png'
+        return NextResponse.json({ qr: `data:${mimeType};base64,${base64}` })
       }
     }
 

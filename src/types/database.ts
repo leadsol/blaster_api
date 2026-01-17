@@ -252,7 +252,7 @@ export interface Database {
           contact_id: string
           phone: string
           message_content: string
-          status: 'pending' | 'sent' | 'delivered' | 'read' | 'failed'
+          status: 'pending' | 'sent' | 'delivered' | 'read' | 'failed' | 'blacklisted'
           waha_message_id: string | null
           error_message: string | null
           sent_at: string | null
@@ -267,7 +267,7 @@ export interface Database {
           contact_id: string
           phone: string
           message_content: string
-          status?: 'pending' | 'sent' | 'delivered' | 'read' | 'failed'
+          status?: 'pending' | 'sent' | 'delivered' | 'read' | 'failed' | 'blacklisted'
           waha_message_id?: string | null
           error_message?: string | null
           sent_at?: string | null
@@ -282,7 +282,7 @@ export interface Database {
           contact_id?: string
           phone?: string
           message_content?: string
-          status?: 'pending' | 'sent' | 'delivered' | 'read' | 'failed'
+          status?: 'pending' | 'sent' | 'delivered' | 'read' | 'failed' | 'blacklisted'
           waha_message_id?: string | null
           error_message?: string | null
           sent_at?: string | null
@@ -471,6 +471,38 @@ export interface Database {
           attachments?: string[] | null
           created_at?: string
           updated_at?: string
+        }
+      }
+      list_history: {
+        Row: {
+          id: string
+          list_id: string
+          user_id: string
+          action_type: 'campaign' | 'contacts_added' | 'contacts_removed' | 'name_changed' | 'duplicated' | 'exported' | 'imported'
+          description: string
+          campaign_id: string | null
+          metadata: Record<string, unknown> | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          list_id: string
+          user_id: string
+          action_type: 'campaign' | 'contacts_added' | 'contacts_removed' | 'name_changed' | 'duplicated' | 'exported' | 'imported'
+          description: string
+          campaign_id?: string | null
+          metadata?: Record<string, unknown> | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          list_id?: string
+          user_id?: string
+          action_type?: 'campaign' | 'contacts_added' | 'contacts_removed' | 'name_changed' | 'duplicated' | 'exported' | 'imported'
+          description?: string
+          campaign_id?: string | null
+          metadata?: Record<string, unknown> | null
+          created_at?: string
         }
       }
     }

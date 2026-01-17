@@ -3260,21 +3260,50 @@ function NewCampaignContent() {
                 </button>
               </div>
             ) : (
-              <div className="relative">
-                <select
-                  value={selectedConnection}
-                  onChange={(e) => setSelectedConnection(e.target.value)}
-                  className={`w-full h-[44px] sm:h-[46px] md:h-[48px] lg:h-[40px] xl:h-[42px] 2xl:h-[44px] px-[12px] sm:px-[14px] md:px-[16px] lg:px-[14px] rounded-[10px] text-[13px] sm:text-[14px] md:text-[15px] lg:text-[13px] xl:text-[14px] outline-none appearance-none cursor-pointer ${
-                    darkMode ? 'bg-[#142241] text-white' : 'bg-white text-[#030733]'
-                  }`}
-                >
-                  {connections.map((conn) => (
-                    <option key={conn.id} value={conn.id}>
-                      {conn.display_name || conn.phone_number || conn.session_name}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className={`absolute left-[12px] sm:left-[14px] top-1/2 -translate-y-1/2 w-[14px] h-[14px] sm:w-[15px] sm:h-[15px] md:w-[16px] md:h-[16px] pointer-events-none ${darkMode ? 'text-gray-400' : 'text-[#030733]'}`} />
+              <div>
+                <div className="relative">
+                  <select
+                    value={selectedConnection}
+                    onChange={(e) => setSelectedConnection(e.target.value)}
+                    className={`w-full h-[44px] sm:h-[46px] md:h-[48px] lg:h-[40px] xl:h-[42px] 2xl:h-[44px] px-[12px] sm:px-[14px] md:px-[16px] lg:px-[14px] rounded-[10px] text-[13px] sm:text-[14px] md:text-[15px] lg:text-[13px] xl:text-[14px] outline-none appearance-none cursor-pointer ${
+                      darkMode ? 'bg-[#142241] text-white' : 'bg-white text-[#030733]'
+                    }`}
+                  >
+                    {connections.map((conn) => (
+                      <option key={conn.id} value={conn.id}>
+                        {conn.display_name || conn.phone_number || conn.session_name}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className={`absolute left-[12px] sm:left-[14px] top-1/2 -translate-y-1/2 w-[14px] h-[14px] sm:w-[15px] sm:h-[15px] md:w-[16px] md:h-[16px] pointer-events-none ${darkMode ? 'text-gray-400' : 'text-[#030733]'}`} />
+                </div>
+
+                {/* Daily Limit Stats - Always show 90 as base limit */}
+                {(() => {
+                  const BASE_LIMIT = 90
+                  let sent = 0
+
+                  if (selectedConnection && deviceDailyLimits[selectedConnection]) {
+                    sent = deviceDailyLimits[selectedConnection].sent
+                  }
+
+                  const remaining = Math.max(0, BASE_LIMIT - sent)
+                  const exceeded = sent > BASE_LIMIT ? sent - BASE_LIMIT : 0
+                  const isExceeded = exceeded > 0
+                  const isWarning = !isExceeded && remaining <= 10
+
+                  return (
+                    <div className={`flex items-center gap-[12px] mt-[8px] text-[13px] font-medium ${
+                      isExceeded ? 'text-red-500' : isWarning ? 'text-orange-500' : darkMode ? 'text-green-400' : 'text-green-600'
+                    }`}>
+                      <span>נשלחו: {sent}</span>
+                      <span>נשארו: {remaining}</span>
+                      {isExceeded && (
+                        <span className="text-red-500 font-medium">חריגה: {exceeded}</span>
+                      )}
+                    </div>
+                  )
+                })()}
               </div>
             )}
           </div>

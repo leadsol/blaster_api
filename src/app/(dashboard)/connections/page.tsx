@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import {
   Plus,
@@ -23,7 +24,9 @@ import {
   ChevronRight,
   Menu,
   Pencil,
-  Unplug
+  Unplug,
+  MoreVertical,
+  Bell
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { he } from 'date-fns/locale'
@@ -95,6 +98,7 @@ const getNextSessionName = async (): Promise<string> => {
 }
 
 export default function ConnectionsPage() {
+  const router = useRouter()
   const { darkMode } = useTheme()
   const [connections, setConnections] = useState<Connection[]>([])
   const [loading, setLoading] = useState(true)
@@ -128,6 +132,41 @@ export default function ConnectionsPage() {
     message?: string
     type: 'success' | 'error' | 'warning' | 'info'
   }>({ isOpen: false, title: '', type: 'info' })
+  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null)
+  const [sortField, setSortField] = useState<'name' | 'first_connected' | 'last_update' | 'status'>('name')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
+  const [connectionAlerts, setConnectionAlerts] = useState<Array<{
+    id: string
+    type: 'connected' | 'disconnected' | 'name_changed' | 'created' | 'deleted'
+    connectionName: string
+    timestamp: Date
+    message: string
+  }>>([])
+
+  // Load alerts from localStorage on mount
+  useEffect(() => {
+    const savedAlerts = localStorage.getItem('connectionAlerts')
+    if (savedAlerts) {
+      try {
+        const parsed = JSON.parse(savedAlerts)
+        // Convert timestamp strings back to Date objects
+        const alerts = parsed.map((alert: { id: string; type: string; connectionName: string; timestamp: string; message: string }) => ({
+          ...alert,
+          timestamp: new Date(alert.timestamp)
+        }))
+        setConnectionAlerts(alerts)
+      } catch (e) {
+        console.error('Error loading alerts from localStorage:', e)
+      }
+    }
+  }, [])
+
+  // Save alerts to localStorage when they change
+  useEffect(() => {
+    if (connectionAlerts.length > 0) {
+      localStorage.setItem('connectionAlerts', JSON.stringify(connectionAlerts))
+    }
+  }, [connectionAlerts])
 
   useEffect(() => {
     loadConnections()
@@ -160,6 +199,14 @@ export default function ConnectionsPage() {
               }
               return [newConnection, ...prev]
             })
+            // Add alert for new connection
+            setConnectionAlerts(prev => [{
+              id: `${newConnection.id}-${Date.now()}`,
+              type: 'created',
+              connectionName: newConnection.display_name || 'חיבור חדש',
+              timestamp: new Date(),
+              message: `חיבור "${newConnection.display_name || 'חיבור חדש'}" נוצר`
+            }, ...prev].slice(0, 10)) // Keep max 10 alerts
           } else if (payload.eventType === 'UPDATE') {
             const updated = payload.new as Connection
             const old = payload.old as Partial<Connection>
@@ -168,6 +215,38 @@ export default function ConnectionsPage() {
             setConnections(prev =>
               prev.map(c => c.id === updated.id ? updated : c)
             )
+
+            // Add alerts for status changes
+            if (old.status !== updated.status) {
+              if (updated.status === 'connected') {
+                setConnectionAlerts(prev => [{
+                  id: `${updated.id}-${Date.now()}`,
+                  type: 'connected',
+                  connectionName: updated.display_name || 'חיבור',
+                  timestamp: new Date(),
+                  message: `"${updated.display_name || 'החיבור'}" התחבר בהצלחה`
+                }, ...prev].slice(0, 10))
+              } else if (updated.status === 'disconnected') {
+                setConnectionAlerts(prev => [{
+                  id: `${updated.id}-${Date.now()}`,
+                  type: 'disconnected',
+                  connectionName: updated.display_name || 'חיבור',
+                  timestamp: new Date(),
+                  message: `"${updated.display_name || 'החיבור'}" התנתק`
+                }, ...prev].slice(0, 10))
+              }
+            }
+
+            // Add alert for name change
+            if (old.display_name !== updated.display_name && old.display_name) {
+              setConnectionAlerts(prev => [{
+                id: `${updated.id}-${Date.now()}`,
+                type: 'name_changed',
+                connectionName: updated.display_name || 'חיבור',
+                timestamp: new Date(),
+                message: `שם שונה מ-"${old.display_name}" ל-"${updated.display_name}"`
+              }, ...prev].slice(0, 10))
+            }
 
             // If status changed while modal is open, show appropriate state
             if ((step === 2 || showQRModal) && currentSessionId === updated.id) {
@@ -187,7 +266,16 @@ export default function ConnectionsPage() {
             }
           } else if (payload.eventType === 'DELETE') {
             // Connection deleted
-            setConnections(prev => prev.filter(c => c.id !== (payload.old as Connection).id))
+            const deletedConnection = payload.old as Connection
+            setConnections(prev => prev.filter(c => c.id !== deletedConnection.id))
+            // Add alert for deleted connection
+            setConnectionAlerts(prev => [{
+              id: `${deletedConnection.id}-${Date.now()}`,
+              type: 'deleted',
+              connectionName: deletedConnection.display_name || 'חיבור',
+              timestamp: new Date(),
+              message: `"${deletedConnection.display_name || 'חיבור'}" נמחק`
+            }, ...prev].slice(0, 10))
           }
         }
       )
@@ -550,34 +638,37 @@ export default function ConnectionsPage() {
 
     setDisconnecting(true)
     try {
+      const supabase = createClient()
+
       // Call WAHA logout endpoint
       const response = await fetch(`/api/waha/sessions/${connectionToDisconnect.session_name}/logout`, {
         method: 'POST',
       })
 
-      if (response.ok) {
-        // Update status in database
-        const supabase = createClient()
-        await supabase.from('connections').update({
-          status: 'disconnected',
-          phone_number: null,
-        }).eq('id', connectionToDisconnect.id)
-
-        setConnections(connections.map(c =>
-          c.id === connectionToDisconnect.id
-            ? { ...c, status: 'disconnected' as const, phone_number: null }
-            : c
-        ))
-
-        setAlertModal({
-          isOpen: true,
-          title: 'החיבור נותק בהצלחה',
-          message: 'ניתן לחבר מחדש באמצעות סריקת QR או קוד',
-          type: 'success'
-        })
-      } else {
-        throw new Error('Failed to disconnect')
+      // Even if WAHA returns an error (e.g., session already logged out or doesn't exist),
+      // we should still update our database to mark it as disconnected
+      if (!response.ok) {
+        console.warn(`WAHA logout returned ${response.status}, proceeding with local update`)
       }
+
+      // Update status in database regardless of WAHA response
+      await supabase.from('connections').update({
+        status: 'disconnected',
+        phone_number: null,
+      }).eq('id', connectionToDisconnect.id)
+
+      setConnections(prev => prev.map(c =>
+        c.id === connectionToDisconnect.id
+          ? { ...c, status: 'disconnected' as const, phone_number: null }
+          : c
+      ))
+
+      setAlertModal({
+        isOpen: true,
+        title: 'החיבור נותק בהצלחה',
+        message: 'ניתן לחבר מחדש באמצעות סריקת QR או קוד',
+        type: 'success'
+      })
     } catch (error) {
       console.error('Error disconnecting:', error)
       setAlertModal({
@@ -601,12 +692,17 @@ export default function ConnectionsPage() {
     if (!connectionToEdit) return
 
     setSavingName(true)
+    const oldName = connectionToEdit.display_name || 'חיבור WhatsApp'
+    const newName = editDisplayName.trim() || 'חיבור WhatsApp'
+    const now = new Date()
+
     try {
       const supabase = createClient()
 
-      // Update in database
+      // Update in database with updated_at
       await supabase.from('connections').update({
         display_name: editDisplayName.trim() || null,
+        updated_at: now.toISOString(),
       }).eq('id', connectionToEdit.id)
 
       // Also update WAHA metadata
@@ -623,9 +719,20 @@ export default function ConnectionsPage() {
 
       setConnections(connections.map(c =>
         c.id === connectionToEdit.id
-          ? { ...c, display_name: editDisplayName.trim() || null }
+          ? { ...c, display_name: editDisplayName.trim() || null, updated_at: now.toISOString() }
           : c
       ))
+
+      // Add alert to log
+      if (oldName !== newName) {
+        setConnectionAlerts(prev => [{
+          id: `name-${connectionToEdit.id}-${Date.now()}`,
+          type: 'name_changed',
+          connectionName: newName,
+          timestamp: now,
+          message: `שם החיבור שונה מ-"${oldName}" ל-"${newName}"`
+        }, ...prev].slice(0, 50))
+      }
 
       setConnectionToEdit(null)
       setEditDisplayName('')
@@ -667,369 +774,526 @@ export default function ConnectionsPage() {
   return (
     <div className="p-3 sm:p-4 lg:p-6 h-full overflow-y-auto" dir="rtl">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 mb-4 sm:mb-6 lg:mb-8">
-        <div>
-          <h1 className={`text-lg sm:text-xl lg:text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>החיבורים שלך</h1>
-          <p className={`text-xs sm:text-sm lg:text-base ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>נהל את חיבורי WhatsApp</p>
-        </div>
-        <button
-          onClick={() => setShowNewModal(true)}
-          className="flex items-center justify-center gap-1.5 sm:gap-2 bg-[#25D366] text-white px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg hover:bg-[#20bd5a] transition-colors w-full sm:w-auto text-[13px] sm:text-[14px]"
-        >
-          <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
-          <span>הוסף חיבור</span>
-        </button>
+      <div className="mb-4 sm:mb-6 lg:mb-8">
+        <h1 className={`text-lg sm:text-xl lg:text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>החיבורים שלך</h1>
+        <p className={`text-xs sm:text-sm lg:text-base ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>נהל את חיבורי WhatsApp</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-6">
         {/* Status Card - Full width on mobile, side on desktop */}
-        <div className="lg:col-span-4 order-2 lg:order-1">
-          <div className={`${darkMode ? 'bg-[#1a2942] border-[#2a3f5f]' : 'bg-white border-gray-200'} rounded-xl border p-4 md:p-6`}>
-            <h3 className={`font-medium mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>סטטוס החיבורים</h3>
-            <div className="flex items-center justify-center mb-4 sm:mb-6">
-              <div className="relative w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32">
+        <div className="lg:col-span-4 order-2 lg:order-2 lg:sticky lg:top-6 lg:h-[calc(100vh-180px)] flex flex-col">
+          <div className={`${darkMode ? 'bg-[#1a2942] border-[#2a3f5f]' : 'bg-white'} rounded-[15px] p-3 md:p-4 flex-shrink-0`}>
+            <h3 className={`text-center text-lg font-semibold mb-2 ${darkMode ? 'text-white' : 'text-[#030733]'}`}>סטטוס החיבורים שלך</h3>
+            <div className="flex items-center justify-center mb-4">
+              <div className="relative w-32 h-32 md:w-36 md:h-36">
                 <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                  {/* Background circle - Gray for disconnected */}
                   <circle
-                    cx="50" cy="50" r="40"
+                    cx="50" cy="50" r="42"
                     fill="none"
-                    stroke={darkMode ? '#2a3f5f' : '#e5e7eb'}
-                    strokeWidth="12"
+                    stroke="#EAEAEA"
+                    strokeWidth="8"
                   />
+                  {/* Foreground circle - Green for connected */}
                   <circle
-                    cx="50" cy="50" r="40"
+                    cx="50" cy="50" r="42"
                     fill="none"
-                    stroke="#25D366"
-                    strokeWidth="12"
-                    strokeDasharray={`${(connectedCount / Math.max(totalCount, 1)) * 251} 251`}
+                    stroke="#187C55"
+                    strokeWidth="8"
+                    strokeDasharray={`${(connectedCount / Math.max(totalCount, 1)) * 264} 264`}
                   />
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className={`text-xl sm:text-2xl md:text-3xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{connectedCount}/{totalCount}</span>
-                  <span className={`text-[9px] sm:text-[10px] md:text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>מחוברים</span>
+                  <span className={`text-[24px] font-semibold ${darkMode ? 'text-white' : 'text-[#030733]'}`}>{connectedCount}/{totalCount}</span>
+                  <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-[#030733]'}`}>מכשירים מחוברים</span>
                 </div>
               </div>
             </div>
 
-            {/* Quick Stats */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-3 text-center">
-                <div className="flex items-center justify-center gap-1 text-green-400 mb-1">
-                  <Wifi className="w-4 h-4" />
-                  <span className="text-xl font-bold">{connectedCount}</span>
-                </div>
-                <span className="text-xs text-green-400">מחוברים</span>
-              </div>
-              <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-center">
-                <div className="flex items-center justify-center gap-1 text-red-400 mb-1">
-                  <WifiOff className="w-4 h-4" />
-                  <span className="text-xl font-bold">{totalCount - connectedCount}</span>
-                </div>
-                <span className="text-xs text-red-400">מנותקים</span>
-              </div>
-            </div>
+            {/* Expand Package Button */}
+            <button className="w-full h-10 bg-[#030733] text-white rounded-[8px] font-semibold text-sm hover:bg-[#1a1a4a] transition-colors">
+              הרחב חבילה
+            </button>
           </div>
 
-          {/* Tips Section - Hidden on mobile */}
-          <div className={`hidden md:block ${darkMode ? 'bg-[#1a2942] border-[#2a3f5f]' : 'bg-white border-gray-200'} rounded-xl border p-6 mt-6`}>
-            <h3 className={`font-medium mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>טיפים לחיבור יציב</h3>
-            <div className="space-y-3">
-              <div className="flex items-start gap-3 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-                <CheckCircle className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
-                <p className={`text-sm ${darkMode ? 'text-blue-300' : 'text-blue-600'}`}>
-                  וודא שהטלפון מחובר לאינטרנט יציב
+          {/* Connection Alerts Log */}
+          <div className={`${darkMode ? 'bg-[#1a2942] border-[#2a3f5f]' : 'bg-white'} rounded-[15px] p-4 mt-4 flex-1 min-h-0 flex flex-col`}>
+            <h3 className={`text-center text-xl font-semibold mb-4 flex-shrink-0 ${darkMode ? 'text-white' : 'text-[#030733]'}`}>התראות</h3>
+            <div className="space-y-3 overflow-y-auto flex-1 min-h-0">
+              {connectionAlerts.length === 0 ? (
+                <p className={`text-sm text-center py-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  אין התראות עדיין
                 </p>
-              </div>
-              <div className="flex items-start gap-3 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-                <CheckCircle className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
-                <p className={`text-sm ${darkMode ? 'text-blue-300' : 'text-blue-600'}`}>
-                  אפליקציית WhatsApp חייבת להיות פתוחה ברקע
-                </p>
-              </div>
-              <div className="flex items-start gap-3 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
-                <AlertCircle className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
-                <p className={`text-sm ${darkMode ? 'text-yellow-300' : 'text-yellow-600'}`}>
-                  לא לפתוח את WhatsApp Web במקום אחר
-                </p>
-              </div>
+              ) : (
+                connectionAlerts.map((alert) => (
+                  <div
+                    key={alert.id}
+                    className={`p-3 ${darkMode ? 'bg-[#0f172a]' : 'bg-[#F2F3F8]'} rounded-lg`}
+                  >
+                    <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-[#030733]'}`}>
+                      {alert.message}
+                    </p>
+                    <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                      {format(alert.timestamp, 'HH:mm dd/MM', { locale: he })}
+                    </p>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
 
-        {/* Connections Table */}
-        <div className="lg:col-span-8 order-1 lg:order-2">
-          <div className={`${darkMode ? 'bg-[#1a2942] border-[#2a3f5f]' : 'bg-white border-gray-200'} rounded-xl border overflow-hidden`}>
-            <div className={`p-4 border-b ${darkMode ? 'border-[#2a3f5f]' : 'border-gray-200'} flex items-center justify-between`}>
-              <h3 className={`font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>רשימת חיבורים</h3>
+        {/* Connections List */}
+        <div className="lg:col-span-8 order-1 lg:order-1">
+          {/* Header Row */}
+          <div className={`hidden md:flex items-center justify-between px-4 py-2 mb-2 ${darkMode ? 'text-gray-400' : 'text-[#030733]'}`}>
+            <div className="flex items-center gap-2 w-[180px] flex-shrink-0">
+              <div className="w-5 flex-shrink-0"></div>
               <button
-                onClick={loadConnections}
-                className={`flex items-center gap-2 text-sm ${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'} transition-colors`}
+                onClick={() => {
+                  if (sortField === 'name') {
+                    setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+                  } else {
+                    setSortField('name')
+                    setSortDirection('asc')
+                  }
+                }}
+                className="text-sm font-normal flex items-center gap-1 hover:opacity-70 transition-opacity"
               >
-                <RefreshCw className="w-4 h-4" />
-                <span className="hidden sm:inline">רענן</span>
+                שם הקונקשן
+                <svg width="13" height="13" viewBox="0 0 13 13" fill="none" xmlns="http://www.w3.org/2000/svg" className={`transition-transform ${sortField === 'name' && sortDirection === 'desc' ? 'rotate-180' : ''}`}>
+                  <path d="M10.5625 4.46875L6.5 8.53125L2.4375 4.46875" stroke="currentColor" strokeWidth="0.8125" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
               </button>
             </div>
+            <div className="flex items-center gap-16">
+              <button
+                onClick={() => {
+                  if (sortField === 'first_connected') {
+                    setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+                  } else {
+                    setSortField('first_connected')
+                    setSortDirection('asc')
+                  }
+                }}
+                className="text-sm font-normal flex items-center gap-1 whitespace-nowrap hover:opacity-70 transition-opacity"
+              >
+                חיבור ראשוני
+                <svg width="13" height="13" viewBox="0 0 13 13" fill="none" xmlns="http://www.w3.org/2000/svg" className={`transition-transform ${sortField === 'first_connected' && sortDirection === 'desc' ? 'rotate-180' : ''}`}>
+                  <path d="M10.5625 4.46875L6.5 8.53125L2.4375 4.46875" stroke="currentColor" strokeWidth="0.8125" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+              <button
+                onClick={() => {
+                  if (sortField === 'last_update') {
+                    setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+                  } else {
+                    setSortField('last_update')
+                    setSortDirection('asc')
+                  }
+                }}
+                className="text-sm font-normal flex items-center gap-1 whitespace-nowrap hover:opacity-70 transition-opacity"
+              >
+                עדכון אחרון
+                <svg width="13" height="13" viewBox="0 0 13 13" fill="none" xmlns="http://www.w3.org/2000/svg" className={`transition-transform ${sortField === 'last_update' && sortDirection === 'desc' ? 'rotate-180' : ''}`}>
+                  <path d="M10.5625 4.46875L6.5 8.53125L2.4375 4.46875" stroke="currentColor" strokeWidth="0.8125" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+              <button
+                onClick={() => {
+                  if (sortField === 'status') {
+                    setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+                  } else {
+                    setSortField('status')
+                    setSortDirection('asc')
+                  }
+                }}
+                className="text-sm font-normal flex items-center gap-1 hover:opacity-70 transition-opacity"
+              >
+                סטטוס
+                <svg width="13" height="13" viewBox="0 0 13 13" fill="none" xmlns="http://www.w3.org/2000/svg" className={`transition-transform ${sortField === 'status' && sortDirection === 'desc' ? 'rotate-180' : ''}`}>
+                  <path d="M10.5625 4.46875L6.5 8.53125L2.4375 4.46875" stroke="currentColor" strokeWidth="0.8125" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+            </div>
+            <span className="text-sm font-normal">פעולות</span>
+          </div>
 
-            {/* Desktop Table */}
-            <div className="hidden md:block overflow-x-auto">
-              <table className="w-full">
-                <thead className={darkMode ? 'bg-[#0f172a]' : 'bg-gray-50'}>
-                  <tr className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                    <th className="text-right p-4 font-medium">שם הקמפיין</th>
-                    <th className="text-right p-4 font-medium">סטטוס</th>
-                    <th className="text-right p-4 font-medium">תאריך חיבור ראשוני</th>
-                    <th className="text-right p-4 font-medium">פעולות</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {loading ? (
-                    <tr>
-                      <td colSpan={4} className={`p-8 text-center ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                        <Loader2 className="w-6 h-6 animate-spin mx-auto" />
-                      </td>
-                    </tr>
-                  ) : connections.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} className="p-12 text-center">
-                        <div className={`w-16 h-16 ${darkMode ? 'bg-[#2a3f5f]' : 'bg-gray-100'} rounded-full flex items-center justify-center mx-auto mb-4`}>
-                          <Smartphone className={`w-8 h-8 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
-                        </div>
-                        <h3 className={`text-lg font-medium mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>אין חיבורים עדיין</h3>
-                        <p className={`mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>חבר את WhatsApp שלך כדי להתחיל לשלוח הודעות</p>
-                        <button
-                          onClick={() => setShowNewModal(true)}
-                          className="inline-flex items-center gap-2 bg-[#25D366] text-white px-4 py-2 rounded-lg hover:bg-[#20bd5a] transition-colors"
-                        >
-                          <Plus className="w-5 h-5" />
-                          הוסף חיבור ראשון
-                        </button>
-                      </td>
-                    </tr>
-                  ) : (
-                    connections.map((connection) => (
-                      <tr key={connection.id} className={`border-t ${darkMode ? 'border-[#2a3f5f] hover:bg-[#0f172a]/50' : 'border-gray-100 hover:bg-gray-50'}`}>
-                        <td className="p-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-[#25D366] rounded-full flex items-center justify-center text-white font-medium">
-                              {connection.display_name?.[0]?.toUpperCase() || 'W'}
-                            </div>
-                            <div>
-                              <p className={`font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                {connection.display_name || 'חיבור WhatsApp'}
-                              </p>
-                              {connection.phone_number && (
-                                <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} dir="ltr">{formatPhoneForDisplay(connection.phone_number)}</p>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-                        <td className="p-4">
-                          <span className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium ${
-                            connection.status === 'connected'
-                              ? 'bg-green-500/20 text-green-400'
-                              : connection.status === 'disconnected'
-                              ? 'bg-red-500/20 text-red-400'
-                              : connection.status === 'qr_pending'
-                              ? 'bg-blue-500/20 text-blue-400'
-                              : 'bg-yellow-500/20 text-yellow-400'
-                          }`}>
-                            <div className={`w-2 h-2 rounded-full ${statusColors[connection.status]}`} />
-                            {statusLabels[connection.status]}
-                          </span>
-                        </td>
-                        <td className={`p-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                          {connection.created_at
-                            ? format(new Date(connection.created_at), 'dd/MM/yyyy', { locale: he })
-                            : '-'}
-                        </td>
-                        <td className="p-4">
-                          <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => refreshConnection(connection)}
-                              className={`p-2 ${darkMode ? 'text-gray-400 hover:text-white hover:bg-[#2a3f5f]' : 'text-gray-400 hover:text-gray-900 hover:bg-gray-100'} rounded-lg transition-colors`}
-                              title="רענן סטטוס"
-                            >
-                              <RefreshCw className="w-4 h-4" />
-                            </button>
-                            {connection.status !== 'connected' && (
-                              <>
+          {/* Desktop Rows */}
+          <div className="hidden md:block space-y-2">
+            {loading ? (
+              <div className={`p-8 text-center ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                <Loader2 className="w-6 h-6 animate-spin mx-auto" />
+              </div>
+            ) : connections.length === 0 ? (
+              <div className="p-12 text-center">
+                <div className={`w-16 h-16 ${darkMode ? 'bg-[#2a3f5f]' : 'bg-gray-100'} rounded-full flex items-center justify-center mx-auto mb-4`}>
+                  <Smartphone className={`w-8 h-8 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
+                </div>
+                <h3 className={`text-lg font-medium mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>אין חיבורים עדיין</h3>
+                <p className={`mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>חבר את WhatsApp שלך כדי להתחיל לשלוח הודעות</p>
+                <button
+                  onClick={() => router.push('/connections/new')}
+                  className="inline-flex items-center gap-2 bg-[#25D366] text-white px-4 py-2 rounded-lg hover:bg-[#20bd5a] transition-colors"
+                >
+                  <Plus className="w-5 h-5" />
+                  הוסף חיבור ראשון
+                </button>
+              </div>
+            ) : (
+              [...connections].sort((a, b) => {
+                let aVal: string | number = ''
+                let bVal: string | number = ''
+
+                switch (sortField) {
+                  case 'name':
+                    aVal = (a.display_name || 'חיבור WhatsApp').toLowerCase()
+                    bVal = (b.display_name || 'חיבור WhatsApp').toLowerCase()
+                    break
+                  case 'first_connected':
+                    aVal = a.first_connected_at || a.created_at || ''
+                    bVal = b.first_connected_at || b.created_at || ''
+                    break
+                  case 'last_update':
+                    const aLastSeen = a.last_seen_at ? new Date(a.last_seen_at).getTime() : 0
+                    const aUpdated = a.updated_at ? new Date(a.updated_at).getTime() : 0
+                    const bLastSeen = b.last_seen_at ? new Date(b.last_seen_at).getTime() : 0
+                    const bUpdated = b.updated_at ? new Date(b.updated_at).getTime() : 0
+                    aVal = Math.max(aLastSeen, aUpdated).toString()
+                    bVal = Math.max(bLastSeen, bUpdated).toString()
+                    break
+                  case 'status':
+                    aVal = a.status
+                    bVal = b.status
+                    break
+                }
+
+                if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1
+                if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1
+                return 0
+              }).map((connection) => (
+                <div
+                  key={connection.id}
+                  className={`flex items-center justify-between px-4 h-[58px] rounded-lg ${darkMode ? 'bg-[#1a2942] hover:bg-[#1a2942]/80' : 'bg-white hover:bg-gray-50'}`}
+                >
+                  {/* צד ימין - צ'קבוקס + שם */}
+                  <div className="flex items-center gap-2 w-[180px] flex-shrink-0">
+                    <input
+                      type="checkbox"
+                      className={`w-4 h-4 rounded border flex-shrink-0 ${darkMode ? 'border-gray-600 bg-transparent' : 'border-gray-300'}`}
+                    />
+                    <p className={`font-medium truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                      {(connection.display_name || 'חיבור WhatsApp').slice(0, 20)}
+                    </p>
+                  </div>
+
+                  {/* אמצע - תאריכים וסטטוס */}
+                  <div className="flex items-center gap-16">
+                    <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                      {connection.first_connected_at
+                        ? format(new Date(connection.first_connected_at), 'dd/MM/yyyy', { locale: he })
+                        : connection.created_at
+                        ? format(new Date(connection.created_at), 'dd/MM/yyyy', { locale: he })
+                        : '-'}
+                    </span>
+
+                    <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                      {(() => {
+                        const lastSeen = connection.last_seen_at ? new Date(connection.last_seen_at) : null
+                        const lastUpdated = connection.updated_at ? new Date(connection.updated_at) : null
+                        const latestDate = lastSeen && lastUpdated
+                          ? (lastSeen > lastUpdated ? lastSeen : lastUpdated)
+                          : (lastSeen || lastUpdated)
+                        return latestDate
+                          ? format(latestDate, 'dd/MM/yyyy HH:mm', { locale: he })
+                          : '-'
+                      })()}
+                    </span>
+
+                    <span className={`inline-flex items-center justify-center px-3 py-1.5 rounded text-sm font-semibold ${
+                      connection.status === 'connected'
+                        ? 'bg-[#187C55] text-white'
+                        : connection.status === 'disconnected'
+                        ? 'bg-[#CD1B1B] text-white'
+                        : connection.status === 'qr_pending'
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-yellow-500 text-white'
+                    }`}>
+                      {statusLabels[connection.status]}
+                    </span>
+                  </div>
+
+                  {/* צד שמאל - פעולות */}
+                  <div className="relative">
+                      <button
+                        onClick={() => setOpenDropdownId(openDropdownId === connection.id ? null : connection.id)}
+                        className={`p-2 ${darkMode ? 'text-gray-400 hover:text-white hover:bg-[#2a3f5f]' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'} rounded-lg transition-colors`}
+                      >
+                        <MoreVertical className="w-5 h-5" />
+                      </button>
+
+                      {/* Dropdown Menu */}
+                      {openDropdownId === connection.id && (
+                        <>
+                          {/* Backdrop to close dropdown */}
+                          <div
+                            className="fixed inset-0 z-10"
+                            onClick={() => setOpenDropdownId(null)}
+                          />
+                          <div className={`absolute left-0 top-full mt-1 w-48 ${darkMode ? 'bg-[#1a2942] border-[#2a3f5f]' : 'bg-white border-gray-200'} border rounded-lg shadow-lg z-20`}>
+                            <div className="py-1">
+                              {/* רענן סטטוס */}
+                              <button
+                                onClick={() => {
+                                  refreshConnection(connection)
+                                  setOpenDropdownId(null)
+                                }}
+                                className={`w-full flex items-center gap-3 px-4 py-2 text-sm ${darkMode ? 'text-gray-300 hover:bg-[#2a3f5f]' : 'text-gray-700 hover:bg-gray-100'}`}
+                              >
+                                <RefreshCw className="w-4 h-4" />
+                                רענן סטטוס
+                              </button>
+
+                              {/* ערוך שם */}
+                              <button
+                                onClick={() => {
+                                  openEditModal(connection)
+                                  setOpenDropdownId(null)
+                                }}
+                                className={`w-full flex items-center gap-3 px-4 py-2 text-sm ${darkMode ? 'text-gray-300 hover:bg-[#2a3f5f]' : 'text-gray-700 hover:bg-gray-100'}`}
+                              >
+                                <Pencil className="w-4 h-4" />
+                                ערוך שם
+                              </button>
+
+                              {/* הצג QR - רק אם לא מחובר */}
+                              {connection.status !== 'connected' && (
                                 <button
                                   onClick={async () => {
                                     setCurrentSessionId(connection.id)
                                     await fetchQRCode(connection.session_name)
                                     setShowQRModal(true)
+                                    setOpenDropdownId(null)
                                   }}
-                                  className={`p-2 ${darkMode ? 'text-gray-400 hover:text-white hover:bg-[#2a3f5f]' : 'text-gray-400 hover:text-gray-900 hover:bg-gray-100'} rounded-lg transition-colors`}
-                                  title="הצג QR"
+                                  className={`w-full flex items-center gap-3 px-4 py-2 text-sm ${darkMode ? 'text-gray-300 hover:bg-[#2a3f5f]' : 'text-gray-700 hover:bg-gray-100'}`}
                                 >
                                   <QrCode className="w-4 h-4" />
+                                  הצג QR
                                 </button>
+                              )}
+
+                              {/* בקש קוד - רק אם לא מחובר */}
+                              {connection.status !== 'connected' && (
                                 <button
                                   onClick={() => {
                                     setCurrentSessionId(connection.id)
                                     setConnectionToRequestCode(connection)
+                                    setOpenDropdownId(null)
                                   }}
-                                  className={`p-2 ${darkMode ? 'text-gray-400 hover:text-white hover:bg-[#2a3f5f]' : 'text-gray-400 hover:text-gray-900 hover:bg-gray-100'} rounded-lg transition-colors`}
-                                  title="בקש קוד לטלפון"
+                                  className={`w-full flex items-center gap-3 px-4 py-2 text-sm ${darkMode ? 'text-gray-300 hover:bg-[#2a3f5f]' : 'text-gray-700 hover:bg-gray-100'}`}
                                 >
                                   <Link2 className="w-4 h-4" />
+                                  בקש קוד
                                 </button>
-                              </>
-                            )}
-                            {connection.status === 'connected' && (
-                              <button
-                                onClick={() => disconnectConnection(connection)}
-                                className={`p-2 ${darkMode ? 'text-gray-400 hover:text-orange-400 hover:bg-orange-500/10' : 'text-gray-400 hover:text-orange-600 hover:bg-orange-100'} rounded-lg transition-colors`}
-                                title="נתק חיבור"
-                              >
-                                <Unplug className="w-4 h-4" />
-                              </button>
-                            )}
-                            <button
-                              onClick={() => openEditModal(connection)}
-                              className={`p-2 ${darkMode ? 'text-gray-400 hover:text-white hover:bg-[#2a3f5f]' : 'text-gray-400 hover:text-gray-900 hover:bg-gray-100'} rounded-lg transition-colors`}
-                              title="ערוך שם"
-                            >
-                              <Pencil className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => deleteConnection(connection)}
-                              className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
-                              title="מחק חיבור"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+                              )}
 
-            {/* Mobile Cards */}
-            <div className="md:hidden">
-              {loading ? (
-                <div className={`p-8 text-center ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                  <Loader2 className="w-6 h-6 animate-spin mx-auto" />
-                </div>
-              ) : connections.length === 0 ? (
-                <div className="p-8 text-center">
-                  <div className={`w-16 h-16 ${darkMode ? 'bg-[#2a3f5f]' : 'bg-gray-100'} rounded-full flex items-center justify-center mx-auto mb-4`}>
-                    <Smartphone className={`w-8 h-8 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
-                  </div>
-                  <h3 className={`text-lg font-medium mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>אין חיבורים עדיין</h3>
-                  <p className={`mb-4 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>חבר את WhatsApp שלך כדי להתחיל</p>
-                  <button
-                    onClick={() => setShowNewModal(true)}
-                    className="inline-flex items-center gap-2 bg-[#25D366] text-white px-4 py-2 rounded-lg"
-                  >
-                    <Plus className="w-5 h-5" />
-                    הוסף חיבור
-                  </button>
-                </div>
-              ) : (
-                <div className={`divide-y ${darkMode ? 'divide-[#2a3f5f]' : 'divide-gray-100'}`}>
-                  {connections.map((connection) => (
-                    <div key={connection.id} className="p-4">
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-[#25D366] rounded-full flex items-center justify-center text-white font-medium">
-                            {connection.display_name?.[0]?.toUpperCase() || 'W'}
-                          </div>
-                          <div>
-                            <p className={`font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                              {connection.display_name || 'חיבור WhatsApp'}
-                            </p>
-                            {connection.phone_number && (
-                              <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} dir="ltr">{formatPhoneForDisplay(connection.phone_number)}</p>
-                            )}
-                          </div>
-                        </div>
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
-                          connection.status === 'connected'
-                            ? 'bg-green-500/20 text-green-400'
-                            : connection.status === 'disconnected'
-                            ? 'bg-red-500/20 text-red-400'
-                            : 'bg-blue-500/20 text-blue-400'
-                        }`}>
-                          <div className={`w-1.5 h-1.5 rounded-full ${statusColors[connection.status]}`} />
-                          {statusLabels[connection.status]}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                          {connection.created_at
-                            ? format(new Date(connection.created_at), 'dd/MM/yyyy', { locale: he })
-                            : 'לא חובר עדיין'}
-                        </span>
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => refreshConnection(connection)}
-                            className={`p-2 ${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-400 hover:text-gray-900'} rounded-lg`}
-                          >
-                            <RefreshCw className="w-4 h-4" />
-                          </button>
-                          {connection.status !== 'connected' && (
-                            <>
-                              <button
-                                onClick={async () => {
-                                  setCurrentSessionId(connection.id)
-                                  await fetchQRCode(connection.session_name)
-                                  setShowQRModal(true)
-                                }}
-                                className={`p-2 ${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-400 hover:text-gray-900'} rounded-lg`}
-                              >
-                                <QrCode className="w-4 h-4" />
-                              </button>
+                              {/* נתק חיבור - רק אם מחובר */}
+                              {connection.status === 'connected' && (
+                                <button
+                                  onClick={() => {
+                                    disconnectConnection(connection)
+                                    setOpenDropdownId(null)
+                                  }}
+                                  className={`w-full flex items-center gap-3 px-4 py-2 text-sm ${darkMode ? 'text-orange-400 hover:bg-orange-500/10' : 'text-orange-600 hover:bg-orange-50'}`}
+                                >
+                                  <Unplug className="w-4 h-4" />
+                                  נתק חיבור
+                                </button>
+                              )}
+
+                              {/* מחק חיבור */}
                               <button
                                 onClick={() => {
-                                  setCurrentSessionId(connection.id)
-                                  setConnectionToRequestCode(connection)
+                                  deleteConnection(connection)
+                                  setOpenDropdownId(null)
                                 }}
-                                className={`p-2 ${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-400 hover:text-gray-900'} rounded-lg`}
+                                className={`w-full flex items-center gap-3 px-4 py-2 text-sm ${darkMode ? 'text-red-400 hover:bg-red-500/10' : 'text-red-600 hover:bg-red-50'}`}
                               >
-                                <Link2 className="w-4 h-4" />
+                                <Trash2 className="w-4 h-4" />
+                                מחק חיבור
                               </button>
-                            </>
-                          )}
-                          {connection.status === 'connected' && (
-                            <button
-                              onClick={() => disconnectConnection(connection)}
-                              className={`p-2 ${darkMode ? 'text-gray-400 hover:text-orange-400' : 'text-gray-400 hover:text-orange-600'} rounded-lg`}
-                            >
-                              <Unplug className="w-4 h-4" />
-                            </button>
-                          )}
-                          <button
-                            onClick={() => openEditModal(connection)}
-                            className={`p-2 ${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-400 hover:text-gray-900'} rounded-lg`}
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => deleteConnection(connection)}
-                            className="p-2 text-gray-400 hover:text-red-400 rounded-lg"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                            </div>
+                          </div>
+                        </>
+                      )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Mobile Cards */}
+          <div className="md:hidden">
+            {loading ? (
+              <div className={`p-8 text-center ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                <Loader2 className="w-6 h-6 animate-spin mx-auto" />
+              </div>
+            ) : connections.length === 0 ? (
+              <div className="p-8 text-center">
+                <div className={`w-16 h-16 ${darkMode ? 'bg-[#2a3f5f]' : 'bg-gray-100'} rounded-full flex items-center justify-center mx-auto mb-4`}>
+                  <Smartphone className={`w-8 h-8 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
+                </div>
+                <h3 className={`text-lg font-medium mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>אין חיבורים עדיין</h3>
+                <p className={`mb-4 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>חבר את WhatsApp שלך כדי להתחיל</p>
+                <button
+                  onClick={() => router.push('/connections/new')}
+                  className="inline-flex items-center gap-2 bg-[#25D366] text-white px-4 py-2 rounded-lg"
+                >
+                  <Plus className="w-5 h-5" />
+                  הוסף חיבור
+                </button>
+              </div>
+            ) : (
+              <div className={`divide-y ${darkMode ? 'divide-[#2a3f5f]' : 'divide-gray-100'}`}>
+                {connections.map((connection) => (
+                  <div key={connection.id} className={`p-4 ${darkMode ? 'bg-[#1a2942]' : 'bg-white'}`}>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          className={`w-4 h-4 rounded border ${darkMode ? 'border-gray-600 bg-transparent' : 'border-gray-300'}`}
+                        />
+                        <div>
+                          <p className={`font-semibold ${darkMode ? 'text-white' : 'text-[#030733]'}`}>
+                            {connection.display_name || 'חיבור WhatsApp'}
+                          </p>
                         </div>
                       </div>
+                      <span className={`inline-flex items-center justify-center px-3 py-1 rounded text-xs font-semibold ${
+                        connection.status === 'connected'
+                          ? 'bg-[#187C55] text-white'
+                          : connection.status === 'disconnected'
+                          ? 'bg-[#CD1B1B] text-white'
+                          : 'bg-blue-500 text-white'
+                      }`}>
+                        {statusLabels[connection.status]}
+                      </span>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
+                    <div className="flex items-center justify-between">
+                      <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-[#454545]'}`}>
+                        {connection.first_connected_at
+                          ? format(new Date(connection.first_connected_at), 'dd/MM/yyyy', { locale: he })
+                          : connection.created_at
+                          ? format(new Date(connection.created_at), 'dd/MM/yyyy', { locale: he })
+                          : 'לא חובר עדיין'}
+                      </span>
+                      {/* 3 dots menu for mobile */}
+                      <div className="relative">
+                        <button
+                          onClick={() => setOpenDropdownId(openDropdownId === `mobile-${connection.id}` ? null : `mobile-${connection.id}`)}
+                          className={`p-2 ${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'} rounded-lg`}
+                        >
+                          <MoreVertical className="w-5 h-5" />
+                        </button>
 
-            {/* Add Connection Button at bottom */}
-            <div className={`p-4 border-t ${darkMode ? 'border-[#2a3f5f]' : 'border-gray-200'} flex justify-center`}>
-              <button
-                onClick={() => setShowNewModal(true)}
-                className="w-12 h-12 bg-[#25D366] rounded-full flex items-center justify-center text-white hover:bg-[#20bd5a] transition-colors shadow-lg"
-              >
-                <Plus className="w-6 h-6" />
-              </button>
-            </div>
+                        {/* Mobile Dropdown Menu */}
+                        {openDropdownId === `mobile-${connection.id}` && (
+                          <>
+                            <div
+                              className="fixed inset-0 z-10"
+                              onClick={() => setOpenDropdownId(null)}
+                            />
+                            <div className={`absolute left-0 top-full mt-1 w-48 ${darkMode ? 'bg-[#1a2942] border-[#2a3f5f]' : 'bg-white border-gray-200'} border rounded-lg shadow-lg z-20`}>
+                              <div className="py-1">
+                                <button
+                                  onClick={() => {
+                                    refreshConnection(connection)
+                                    setOpenDropdownId(null)
+                                  }}
+                                  className={`w-full flex items-center gap-3 px-4 py-2 text-sm ${darkMode ? 'text-gray-300 hover:bg-[#2a3f5f]' : 'text-gray-700 hover:bg-gray-100'}`}
+                                >
+                                  <RefreshCw className="w-4 h-4" />
+                                  רענן סטטוס
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    openEditModal(connection)
+                                    setOpenDropdownId(null)
+                                  }}
+                                  className={`w-full flex items-center gap-3 px-4 py-2 text-sm ${darkMode ? 'text-gray-300 hover:bg-[#2a3f5f]' : 'text-gray-700 hover:bg-gray-100'}`}
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                  ערוך שם
+                                </button>
+                                {connection.status !== 'connected' && (
+                                  <>
+                                    <button
+                                      onClick={async () => {
+                                        setCurrentSessionId(connection.id)
+                                        await fetchQRCode(connection.session_name)
+                                        setShowQRModal(true)
+                                        setOpenDropdownId(null)
+                                      }}
+                                      className={`w-full flex items-center gap-3 px-4 py-2 text-sm ${darkMode ? 'text-gray-300 hover:bg-[#2a3f5f]' : 'text-gray-700 hover:bg-gray-100'}`}
+                                    >
+                                      <QrCode className="w-4 h-4" />
+                                      הצג QR
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setCurrentSessionId(connection.id)
+                                        setConnectionToRequestCode(connection)
+                                        setOpenDropdownId(null)
+                                      }}
+                                      className={`w-full flex items-center gap-3 px-4 py-2 text-sm ${darkMode ? 'text-gray-300 hover:bg-[#2a3f5f]' : 'text-gray-700 hover:bg-gray-100'}`}
+                                    >
+                                      <Link2 className="w-4 h-4" />
+                                      בקש קוד
+                                    </button>
+                                  </>
+                                )}
+                                {connection.status === 'connected' && (
+                                  <button
+                                    onClick={() => {
+                                      disconnectConnection(connection)
+                                      setOpenDropdownId(null)
+                                    }}
+                                    className={`w-full flex items-center gap-3 px-4 py-2 text-sm ${darkMode ? 'text-orange-400 hover:bg-orange-500/10' : 'text-orange-600 hover:bg-orange-50'}`}
+                                  >
+                                    <Unplug className="w-4 h-4" />
+                                    נתק חיבור
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => {
+                                    deleteConnection(connection)
+                                    setOpenDropdownId(null)
+                                  }}
+                                  className={`w-full flex items-center gap-3 px-4 py-2 text-sm ${darkMode ? 'text-red-400 hover:bg-red-500/10' : 'text-red-600 hover:bg-red-50'}`}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                  מחק חיבור
+                                </button>
+                              </div>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Add Connection Button at bottom */}
+          <div className={`p-4 border-t ${darkMode ? 'border-[#2a3f5f]' : 'border-gray-200'} flex justify-center`}>
+            <button
+              onClick={() => router.push('/connections/new')}
+              className="w-12 h-12 bg-[#030733] rounded-full flex items-center justify-center text-white hover:bg-[#1a1a4a] transition-colors shadow-lg"
+            >
+              <Plus className="w-6 h-6" />
+            </button>
           </div>
         </div>
       </div>
@@ -1124,6 +1388,7 @@ export default function ConnectionsPage() {
                       type="text"
                       value={displayName}
                       onChange={(e) => setDisplayName(e.target.value)}
+                      maxLength={20}
                       placeholder="לדוגמה: WhatsApp Business"
                       className={`w-full px-4 py-3 ${darkMode ? 'bg-[#0f172a] border-[#2a3f5f] text-white' : 'bg-gray-50 border-gray-200 text-gray-900'} border rounded-lg placeholder-gray-500 focus:ring-2 focus:ring-[#25D366] focus:border-transparent outline-none`}
                     />
@@ -1561,6 +1826,7 @@ export default function ConnectionsPage() {
                   type="text"
                   value={editDisplayName}
                   onChange={(e) => setEditDisplayName(e.target.value)}
+                  maxLength={20}
                   placeholder="לדוגמה: WhatsApp Business"
                   className={`w-full px-4 py-3 ${darkMode ? 'bg-[#0f172a] border-[#2a3f5f] text-white' : 'bg-gray-50 border-gray-200 text-gray-900'} border rounded-lg placeholder-gray-500 focus:ring-2 focus:ring-[#25D366] focus:border-transparent outline-none`}
                 />

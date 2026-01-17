@@ -118,35 +118,51 @@ export async function DELETE(
     }
 
     // First logout (ignore errors - session might already be logged out)
-    await fetch(`${WAHA_API_URL}/api/sessions/${session}/logout`, {
-      method: 'POST',
-      headers: {
-        'X-Api-Key': WAHA_API_KEY,
-      },
-    }).catch(() => {})
+    try {
+      await fetch(`${WAHA_API_URL}/api/${session}/auth/logout`, {
+        method: 'POST',
+        headers: {
+          'X-Api-Key': WAHA_API_KEY,
+        },
+      })
+    } catch (e) {
+      console.log('Logout failed (may already be logged out):', e)
+    }
 
     // Then stop (ignore errors - session might already be stopped)
-    await fetch(`${WAHA_API_URL}/api/sessions/${session}/stop`, {
-      method: 'POST',
-      headers: {
-        'X-Api-Key': WAHA_API_KEY,
-      },
-    }).catch(() => {})
+    try {
+      await fetch(`${WAHA_API_URL}/api/sessions/${session}/stop`, {
+        method: 'POST',
+        headers: {
+          'X-Api-Key': WAHA_API_KEY,
+        },
+      })
+    } catch (e) {
+      console.log('Stop failed (may already be stopped):', e)
+    }
 
-    // Finally delete
-    const response = await fetch(`${WAHA_API_URL}/api/sessions/${session}`, {
+    // Finally delete - use proper endpoint with full deletion
+    // The WAHA API DELETE endpoint should completely remove the session
+    const deleteUrl = `${WAHA_API_URL}/api/sessions/${session}`
+    console.log(`Attempting to delete session at: ${deleteUrl}`)
+
+    const response = await fetch(deleteUrl, {
       method: 'DELETE',
       headers: {
+        'Content-Type': 'application/json',
         'X-Api-Key': WAHA_API_KEY,
       },
     })
 
+    const responseText = await response.text()
+    console.log(`Delete session ${session} response: ${response.status}, body: ${responseText}`)
+
     if (!response.ok && response.status !== 404) {
-      console.error(`WAHA API error: ${response.status}`)
-      return NextResponse.json({ error: 'Failed to delete session' }, { status: response.status })
+      console.error(`WAHA API error: ${response.status}`, responseText)
+      return NextResponse.json({ error: 'Failed to delete session', details: responseText }, { status: response.status })
     }
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, wahaResponse: responseText })
   } catch (error) {
     console.error('Error deleting session:', error)
     return NextResponse.json({ error: 'Failed to delete session' }, { status: 500 })

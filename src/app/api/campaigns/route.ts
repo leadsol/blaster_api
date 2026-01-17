@@ -153,14 +153,47 @@ export async function POST(request: NextRequest) {
 
     // Filter out excluded phones
     const exclusionSet = new Set((exclusion_list || []).map((p: string) => p.replace(/\D/g, '')))
-    const filteredRecipients = recipients.filter((r: { phone: string }) => {
+
+    // Get user's blacklist to filter out blacklisted contacts
+    const { data: blacklistData } = await supabase
+      .from('blacklist')
+      .select('phone')
+      .eq('user_id', user.id)
+
+    const blacklistSet = new Set((blacklistData || []).map(b => b.phone.replace(/\D/g, '')))
+    console.log(`🚫 [CAMPAIGN] Found ${blacklistSet.size} blacklisted phones`)
+
+    // Filter recipients - remove both exclusion list and blacklist
+    const filteredRecipients: Array<{ phone: string; name?: string; variables?: Record<string, string> }> = []
+    const blacklistedRecipients: Array<{ phone: string; name?: string; variables?: Record<string, string> }> = []
+
+    for (const r of recipients) {
       const cleanPhone = r.phone.replace(/\D/g, '')
-      return !exclusionSet.has(cleanPhone)
-    })
+
+      if (exclusionSet.has(cleanPhone)) {
+        // Skip - in exclusion list
+        continue
+      }
+
+      if (blacklistSet.has(cleanPhone)) {
+        // Track as blacklisted (will create message with 'blacklisted' status)
+        blacklistedRecipients.push(r)
+        console.log(`🚫 [CAMPAIGN] Phone ${cleanPhone} is blacklisted`)
+      } else {
+        // Valid recipient
+        filteredRecipients.push(r)
+      }
+    }
+
+    if (filteredRecipients.length === 0 && blacklistedRecipients.length === 0) {
+      return NextResponse.json({
+        error: 'All recipients are in the exclusion list'
+      }, { status: 400 })
+    }
 
     if (filteredRecipients.length === 0) {
       return NextResponse.json({
-        error: 'All recipients are in the exclusion list'
+        error: 'כל הנמענים נמצאים ברשימה השחורה'
       }, { status: 400 })
     }
 
@@ -295,6 +328,44 @@ export async function POST(request: NextRequest) {
       // Rollback campaign
       await supabase.from('campaigns').delete().eq('id', campaign.id)
       return NextResponse.json({ error: 'Failed to create campaign messages' }, { status: 500 })
+    }
+
+    // Create 'blacklisted' status messages for contacts in blacklist
+    // These won't be sent but will appear in analytics
+    if (blacklistedRecipients.length > 0) {
+      const blacklistedMessages = blacklistedRecipients.map((recipient) => {
+        let messageContent = message_template
+        messageContent = messageContent.replace(/\{שם\}/g, recipient.name || '')
+        messageContent = messageContent.replace(/\{טלפון\}/g, recipient.phone)
+
+        if (recipient.variables) {
+          Object.entries(recipient.variables).forEach(([key, value]) => {
+            messageContent = messageContent.replace(new RegExp(`\\{${key}\\}`, 'g'), value)
+          })
+        }
+
+        return {
+          campaign_id: campaign.id,
+          phone: normalizePhone(recipient.phone),
+          name: recipient.name || null,
+          message_content: messageContent.trim(),
+          variables: recipient.variables || {},
+          status: 'blacklisted',
+          error_message: 'לא נשלח - נמען ברשימה שחורה',
+          scheduled_delay_seconds: 0,
+        }
+      })
+
+      const { error: blacklistMessagesError } = await supabase
+        .from('campaign_messages')
+        .insert(blacklistedMessages)
+
+      if (blacklistMessagesError) {
+        console.error('Error creating blacklisted messages:', blacklistMessagesError)
+        // Don't fail the campaign - blacklist messages are optional for display
+      } else {
+        console.log(`🚫 [CAMPAIGN] Created ${blacklistedMessages.length} blacklisted message records`)
+      }
     }
 
     // Update campaign with estimated duration (total time to send all messages)

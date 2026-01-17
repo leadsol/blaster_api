@@ -277,11 +277,11 @@ export function Sidebar() {
 
         {/* רשימת לקוחות */}
         <Link
-          href="/contacts"
-          onClick={(e) => handleLinkClick(e, '/contacts')}
+          href="/lists"
+          onClick={(e) => handleLinkClick(e, '/lists')}
           className={cn(
             "flex items-center gap-3 h-[47px] px-3 rounded-[8px] mb-1 hover:bg-white/5 transition-colors",
-            pathname === '/contacts' && "bg-[rgba(0,67,224,0.31)]"
+            pathname === '/lists' && "bg-[rgba(0,67,224,0.31)]"
           )}
         >
           <svg width="19" height="19" viewBox="0 0 19 19" fill="none" xmlns="http://www.w3.org/2000/svg">
