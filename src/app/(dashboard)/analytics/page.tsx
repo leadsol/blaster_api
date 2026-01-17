@@ -33,8 +33,9 @@ interface CampaignStats {
   message_variations?: string[]
   error_message?: string // Error message when campaign fails
   respect_active_hours?: boolean
-  active_hours_start?: string
-  active_hours_end?: string
+  active_hours_start?: string | null
+  active_hours_end?: string | null
+  is_active?: boolean // Master toggle for campaign
 }
 
 interface Recipient {
