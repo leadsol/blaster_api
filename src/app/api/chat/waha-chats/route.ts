@@ -42,10 +42,11 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch chats directly from WAHA
+    // Note: NOWEB engine uses 'conversationTimestamp' not 'timestamp' for sortBy
     console.log('[WAHA-CHATS] Fetching chats for session:', connection.session_name)
     const chats = await waha.chats.list(connection.session_name, {
       limit: 100,
-      sortBy: 'timestamp' as any,
+      sortBy: 'conversationTimestamp' as any,
       sortOrder: 'desc'
     })
     console.log('[WAHA-CHATS] Got', chats?.length || 0, 'chats')
