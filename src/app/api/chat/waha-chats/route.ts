@@ -53,13 +53,19 @@ export async function GET(request: NextRequest) {
       // Handle chat.id - could be string or object with _serialized
       const chatId = typeof chat.id === 'string' ? chat.id : (chat.id?._serialized || chat.id?.user || String(chat.id))
 
+      // NOWEB uses @g.us for groups and @s.whatsapp.net or @c.us for private chats
+      const isGroup = chatId.includes('@g.us')
+
+      // NOWEB uses conversationTimestamp (seconds), WEBJS uses timestamp
+      const timestamp = chat.conversationTimestamp || chat.timestamp
+
       return {
         chat_id: chatId,
-        name: chat.name || chatId.replace('@c.us', '').replace('@g.us', ''),
+        name: chat.name || chatId.replace('@c.us', '').replace('@g.us', '').replace('@s.whatsapp.net', ''),
         last_message: chat.lastMessage?.body || '',
-        last_message_time: chat.timestamp ? new Date(chat.timestamp * 1000).toISOString() : null,
+        last_message_time: timestamp ? new Date(timestamp * 1000).toISOString() : null,
         unread_count: chat.unreadCount || 0,
-        is_group: chat.isGroup,
+        is_group: isGroup,
         pinned: chat.pinned || false,
         archived: chat.archived || false,
         picture: chat.picture || null,
