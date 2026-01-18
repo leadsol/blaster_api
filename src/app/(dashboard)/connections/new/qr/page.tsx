@@ -110,6 +110,12 @@ function QRConnectionPageContent() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [sessionName, connectionId, step, isExistingSession])
 
+  // Keep step in a ref to avoid subscription recreation
+  const stepRef = useRef(step)
+  useEffect(() => {
+    stepRef.current = step
+  }, [step])
+
   // Listen for connection status changes via Supabase Realtime
   useEffect(() => {
     if (!connectionId) return
@@ -132,7 +138,7 @@ function QRConnectionPageContent() {
           const updated = payload.new as { status: string }
           if (updated.status === 'connected') {
             setStep('success')
-          } else if (updated.status === 'disconnected' && step === 'qr') {
+          } else if (updated.status === 'disconnected' && stepRef.current === 'qr') {
             setShowErrorModal(true)
             setErrorMessage('החיבור נכשל. נסה שוב.')
           }
@@ -146,7 +152,7 @@ function QRConnectionPageContent() {
       console.log('Cleaning up realtime subscription')
       supabase.removeChannel(channel)
     }
-  }, [connectionId, step])
+  }, [connectionId])
 
   const fetchQRCode = async (session: string, retries = 5): Promise<boolean> => {
     try {
