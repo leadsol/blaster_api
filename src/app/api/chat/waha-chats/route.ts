@@ -42,11 +42,13 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch chats directly from WAHA
+    console.log('[WAHA-CHATS] Fetching chats for session:', connection.session_name)
     const chats = await waha.chats.list(connection.session_name, {
       limit: 100,
       sortBy: 'timestamp' as any,
       sortOrder: 'desc'
     })
+    console.log('[WAHA-CHATS] Got', chats?.length || 0, 'chats')
 
     // Format chats for frontend
     const formattedChats = chats.map((chat: any) => {
@@ -74,7 +76,13 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ chats: formattedChats })
   } catch (error) {
-    console.error('WAHA chats error:', error)
-    return NextResponse.json({ error: 'Failed to fetch chats from WhatsApp', chats: [] }, { status: 200 })
+    console.error('[WAHA-CHATS] Error fetching chats:', error)
+    // Return the actual error for debugging
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    return NextResponse.json({
+      error: 'Failed to fetch chats from WhatsApp',
+      details: errorMessage,
+      chats: []
+    }, { status: 200 })
   }
 }

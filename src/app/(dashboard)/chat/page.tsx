@@ -354,6 +354,7 @@ export default function ChatPage() {
 
       if (wahaResponse.ok) {
         const wahaData = await wahaResponse.json()
+        console.log('[CHAT] WAHA chats response:', wahaData)
 
         // Check if connection is not active (API returns error)
         if (wahaData.error === 'Connection is not active') {
@@ -361,6 +362,11 @@ export default function ChatPage() {
           setContacts([])
           setLoading(false)
           return
+        }
+
+        // Log any errors from WAHA
+        if (wahaData.error) {
+          console.error('[CHAT] WAHA chats error:', wahaData.error, wahaData.details)
         }
 
         if (wahaData.chats && wahaData.chats.length > 0) {
