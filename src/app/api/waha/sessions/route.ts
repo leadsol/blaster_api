@@ -94,6 +94,13 @@ export async function POST(request: NextRequest) {
               events: ['message', 'message.ack', 'session.status'],
             },
           ],
+          // NOWEB engine store config - required for chats/messages
+          noweb: {
+            store: {
+              enabled: true,
+              fullSync: true,
+            },
+          },
         },
       }),
     })
