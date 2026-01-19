@@ -385,7 +385,7 @@ export async function PUT(
     }
 
     // Create new campaign messages with pre-calculated delays
-    // Constants for timing
+    // Constants for timing - DEFAULT bulk pauses (always active)
     const MESSAGES_PER_BULK = 30
     const BULK_PAUSE_SECONDS = [
       30 * 60,    // After 1st bulk (30 messages): 30 minutes
@@ -393,9 +393,17 @@ export async function PUT(
       90 * 60,    // After 3rd bulk (90 messages): 1.5 hours - and this repeats
     ]
 
+    // Custom pause settings (user-defined, IN ADDITION to default bulk pauses)
+    const customPauseAfter = pause_after_messages || 0
+    const customPauseSeconds = pause_seconds || 0
+    const hasCustomPause = customPauseAfter > 0 && customPauseSeconds > 0
+
     let cumulativeDelaySeconds = 0
     console.log(`🟣 [PUT] Creating messages for ${filteredRecipients.length} recipients`)
     console.log(`🟣 [PUT] delay_min: ${delay_min}, delay_max: ${delay_max}`)
+    if (hasCustomPause) {
+      console.log(`🟣 [PUT] Custom pause: every ${customPauseAfter} messages, pause for ${customPauseSeconds}s (${customPauseSeconds/60} min)`)
+    }
 
     const campaignMessages = filteredRecipients.map((recipient: { phone: string; name?: string; variables?: Record<string, string> }, index: number) => {
       let messageContent = message_template
@@ -419,12 +427,23 @@ export async function PUT(
 
       console.log(`🟣 [PUT] Message ${messageNumber}/${filteredRecipients.length}: delay=${messageDelay}s, cumulative=${cumulativeDelaySeconds}s, isLast=${isLastMessage}`)
 
+      // DEFAULT bulk pause (every 30 messages)
       if (!isLastMessage && messageNumber % MESSAGES_PER_BULK === 0) {
         const bulkIndex = Math.floor(messageNumber / MESSAGES_PER_BULK) - 1
         const pauseIndex = Math.min(bulkIndex, BULK_PAUSE_SECONDS.length - 1)
         const pauseAmount = BULK_PAUSE_SECONDS[pauseIndex]
-        console.log(`⏸️  [PUT] Adding bulk pause after message ${messageNumber}: ${pauseAmount}s (${pauseAmount/60} minutes)`)
+        console.log(`⏸️  [PUT] Adding DEFAULT bulk pause after message ${messageNumber}: ${pauseAmount}s (${pauseAmount/60} minutes)`)
         cumulativeDelaySeconds += pauseAmount
+      }
+
+      // CUSTOM pause (user-defined, in addition to default)
+      // Only add if not on the same boundary as default bulk pause
+      if (hasCustomPause && !isLastMessage && messageNumber % customPauseAfter === 0) {
+        // Skip if this is also a default bulk pause boundary (avoid double pause on same message)
+        if (messageNumber % MESSAGES_PER_BULK !== 0) {
+          console.log(`⏸️  [PUT] Adding CUSTOM pause after message ${messageNumber}: ${customPauseSeconds}s (${customPauseSeconds/60} minutes)`)
+          cumulativeDelaySeconds += customPauseSeconds
+        }
       }
 
       return {
@@ -463,6 +482,95 @@ export async function PUT(
       .from('campaigns')
       .update({ estimated_duration: estimatedDuration })
       .eq('id', campaignId)
+
+    // Handle contact list creation/assignment
+    if (new_list_name && new_list_name.trim()) {
+      // Create new contact list from campaign recipients
+      const { data: newList, error: listError } = await supabase
+        .from('contact_lists')
+        .insert({
+          user_id: user.id,
+          name: new_list_name.trim(),
+          description: `נוצר מקמפיין: ${name}`,
+          contact_count: filteredRecipients.length
+        })
+        .select()
+        .single()
+
+      if (!listError && newList) {
+        // Add all recipients to the new list
+        const listContacts = filteredRecipients.map((r: { phone: string; name?: string; variables?: Record<string, string> }) => ({
+          list_id: newList.id,
+          phone: normalizePhone(r.phone),
+          name: r.name || null,
+          variables: r.variables || {}
+        }))
+
+        await supabase.from('list_contacts').insert(listContacts)
+
+        // Add history entry
+        await supabase.from('list_history').insert({
+          list_id: newList.id,
+          action_type: 'campaign',
+          description: `נוצר מקמפיין "${name}" עם ${filteredRecipients.length} אנשי קשר`,
+          campaign_id: campaignId
+        })
+
+        console.log(`📋 [CAMPAIGN] Created new contact list "${new_list_name}" with ${filteredRecipients.length} contacts`)
+      }
+    }
+
+    if (existing_list_id) {
+      // Add recipients to existing contact list
+      // First, get existing contacts to avoid duplicates
+      const { data: existingContacts } = await supabase
+        .from('list_contacts')
+        .select('phone')
+        .eq('list_id', existing_list_id)
+
+      const existingPhones = new Set((existingContacts || []).map((c: { phone: string }) => c.phone))
+
+      // Filter out recipients that already exist in the list
+      const newContacts = filteredRecipients.filter((r: { phone: string }) => {
+        const normalizedPhone = normalizePhone(r.phone)
+        return !existingPhones.has(normalizedPhone)
+      })
+
+      if (newContacts.length > 0) {
+        const listContacts = newContacts.map((r: { phone: string; name?: string; variables?: Record<string, string> }) => ({
+          list_id: existing_list_id,
+          phone: normalizePhone(r.phone),
+          name: r.name || null,
+          variables: r.variables || {}
+        }))
+
+        await supabase.from('list_contacts').insert(listContacts)
+
+        // Update contact count
+        const { data: listData } = await supabase
+          .from('contact_lists')
+          .select('contact_count, name')
+          .eq('id', existing_list_id)
+          .single()
+
+        if (listData) {
+          await supabase
+            .from('contact_lists')
+            .update({ contact_count: (listData.contact_count || 0) + newContacts.length })
+            .eq('id', existing_list_id)
+
+          // Add history entry
+          await supabase.from('list_history').insert({
+            list_id: existing_list_id,
+            action_type: 'contacts_added',
+            description: `נוספו ${newContacts.length} אנשי קשר מקמפיין "${name}"`,
+            campaign_id: campaignId
+          })
+
+          console.log(`📋 [CAMPAIGN] Added ${newContacts.length} contacts to existing list "${listData.name}"`)
+        }
+      }
+    }
 
     // Get updated campaign
     const { data: updatedCampaign } = await supabase
