@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { normalizePhone } from '@/lib/phone-utils'
+import { getAppUrl } from '@/lib/app-url'
+import { logger } from '@/lib/logger'
 
 // GET - Get single campaign with messages
 export async function GET(
@@ -70,7 +72,7 @@ export async function PATCH(
 
     let newStatus: string
     let message: string
-    let updateData: Record<string, unknown> = {}
+    const updateData: Record<string, unknown> = {}
 
     switch (action) {
       case 'pause':
@@ -127,11 +129,9 @@ export async function PATCH(
         updateData.paused_at = null // Clear paused_at
 
         // Trigger processing again - use stable app URL
-        const resumeAppUrl = process.env.NEXT_PUBLIC_APP_URL && process.env.NEXT_PUBLIC_APP_URL !== 'http://localhost:3000'
-          ? process.env.NEXT_PUBLIC_APP_URL
-          : (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
+        const resumeAppUrl = getAppUrl()
 
-        console.log(`[RESUME] Triggering process at: ${resumeAppUrl}/api/campaigns/${campaignId}/process`)
+        logger.debug(`[RESUME] Triggering process at: ${resumeAppUrl}/api/campaigns/${campaignId}/process`)
 
         fetch(`${resumeAppUrl}/api/campaigns/${campaignId}/process`, {
           method: 'POST',
@@ -139,7 +139,7 @@ export async function PATCH(
             'Content-Type': 'application/json',
             'x-internal-secret': process.env.CRON_SECRET || '',
           },
-        }).catch(err => console.error('Failed to trigger campaign processing:', err))
+        }).catch(err => logger.error('Failed to trigger campaign processing:', err))
         break
 
       case 'cancel':
@@ -385,13 +385,8 @@ export async function PUT(
     }
 
     // Create new campaign messages with pre-calculated delays
-    // Constants for timing - DEFAULT bulk pauses (always active)
-    const MESSAGES_PER_BULK = 30
-    const BULK_PAUSE_SECONDS = [
-      30 * 60,    // After 1st bulk (30 messages): 30 minutes
-      60 * 60,    // After 2nd bulk (60 messages): 1 hour
-      90 * 60,    // After 3rd bulk (90 messages): 1.5 hours - and this repeats
-    ]
+    // Import shared constants for bulk pause timing
+    const { MESSAGES_PER_BULK, BULK_PAUSE_SECONDS } = await import('@/lib/constants')
 
     // Custom pause settings (user-defined, IN ADDITION to default bulk pauses)
     const customPauseAfter = pause_after_messages || 0
@@ -399,11 +394,6 @@ export async function PUT(
     const hasCustomPause = customPauseAfter > 0 && customPauseSeconds > 0
 
     let cumulativeDelaySeconds = 0
-    console.log(`🟣 [PUT] Creating messages for ${filteredRecipients.length} recipients`)
-    console.log(`🟣 [PUT] delay_min: ${delay_min}, delay_max: ${delay_max}`)
-    if (hasCustomPause) {
-      console.log(`🟣 [PUT] Custom pause: every ${customPauseAfter} messages, pause for ${customPauseSeconds}s (${customPauseSeconds/60} min)`)
-    }
 
     const campaignMessages = filteredRecipients.map((recipient: { phone: string; name?: string; variables?: Record<string, string> }, index: number) => {
       let messageContent = message_template
@@ -425,14 +415,11 @@ export async function PUT(
       const messageNumber = index + 1
       const isLastMessage = messageNumber === filteredRecipients.length
 
-      console.log(`🟣 [PUT] Message ${messageNumber}/${filteredRecipients.length}: delay=${messageDelay}s, cumulative=${cumulativeDelaySeconds}s, isLast=${isLastMessage}`)
-
       // DEFAULT bulk pause (every 30 messages)
       if (!isLastMessage && messageNumber % MESSAGES_PER_BULK === 0) {
         const bulkIndex = Math.floor(messageNumber / MESSAGES_PER_BULK) - 1
         const pauseIndex = Math.min(bulkIndex, BULK_PAUSE_SECONDS.length - 1)
         const pauseAmount = BULK_PAUSE_SECONDS[pauseIndex]
-        console.log(`⏸️  [PUT] Adding DEFAULT bulk pause after message ${messageNumber}: ${pauseAmount}s (${pauseAmount/60} minutes)`)
         cumulativeDelaySeconds += pauseAmount
       }
 
@@ -441,7 +428,6 @@ export async function PUT(
       if (hasCustomPause && !isLastMessage && messageNumber % customPauseAfter === 0) {
         // Skip if this is also a default bulk pause boundary (avoid double pause on same message)
         if (messageNumber % MESSAGES_PER_BULK !== 0) {
-          console.log(`⏸️  [PUT] Adding CUSTOM pause after message ${messageNumber}: ${customPauseSeconds}s (${customPauseSeconds/60} minutes)`)
           cumulativeDelaySeconds += customPauseSeconds
         }
       }
@@ -456,9 +442,6 @@ export async function PUT(
         scheduled_delay_seconds: cumulativeDelaySeconds,
       }
     })
-
-    console.log(`✅ [PUT] Total estimated duration: ${cumulativeDelaySeconds}s (${(cumulativeDelaySeconds/60).toFixed(2)} minutes)`)
-    console.log('Inserting', campaignMessages.length, 'new messages')
 
     const { error: messagesError } = await supabase
       .from('campaign_messages')
@@ -515,8 +498,6 @@ export async function PUT(
           description: `נוצר מקמפיין "${name}" עם ${filteredRecipients.length} אנשי קשר`,
           campaign_id: campaignId
         })
-
-        console.log(`📋 [CAMPAIGN] Created new contact list "${new_list_name}" with ${filteredRecipients.length} contacts`)
       }
     }
 
@@ -566,8 +547,6 @@ export async function PUT(
             description: `נוספו ${newContacts.length} אנשי קשר מקמפיין "${name}"`,
             campaign_id: campaignId
           })
-
-          console.log(`📋 [CAMPAIGN] Added ${newContacts.length} contacts to existing list "${listData.name}"`)
         }
       }
     }

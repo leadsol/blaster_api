@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react'
 
 interface SidebarContextType {
   isCollapsed: boolean
@@ -14,42 +14,56 @@ interface SidebarContextType {
 
 const SidebarContext = createContext<SidebarContextType | undefined>(undefined)
 
+// Helper to get initial collapsed state from localStorage
+function getInitialCollapsed(): boolean {
+  if (typeof window === 'undefined') return false
+  return localStorage.getItem('sidebarCollapsed') === 'true'
+}
+
+// Helper to get initial mobile state
+function getInitialMobile(): boolean {
+  if (typeof window === 'undefined') return false
+  return window.innerWidth < 1024
+}
+
 export function SidebarProvider({ children }: { children: ReactNode }) {
-  const [isCollapsed, setIsCollapsed] = useState(false)
+  const [isCollapsed, setIsCollapsed] = useState(getInitialCollapsed)
   const [isMobileOpen, setIsMobileOpen] = useState(false)
-  const [isMobile, setIsMobile] = useState(false)
+  const [isMobile, setIsMobile] = useState(getInitialMobile)
 
+  // Handle resize events
   useEffect(() => {
-    const saved = localStorage.getItem('sidebarCollapsed')
-    if (saved === 'true') {
-      setIsCollapsed(true)
-    }
-
-    // Check if mobile on mount and on resize
     const checkMobile = () => {
-      setIsMobile(window.innerWidth < 1024)
-      if (window.innerWidth >= 1024) {
+      const mobile = window.innerWidth < 1024
+      setIsMobile(mobile)
+      if (!mobile) {
         setIsMobileOpen(false)
       }
     }
 
-    checkMobile()
     window.addEventListener('resize', checkMobile)
     return () => window.removeEventListener('resize', checkMobile)
   }, [])
 
-  const toggleSidebar = () => {
+  const toggleSidebar = useCallback(() => {
     if (isMobile) {
-      setIsMobileOpen(!isMobileOpen)
+      setIsMobileOpen(prev => !prev)
     } else {
-      const newValue = !isCollapsed
-      setIsCollapsed(newValue)
-      localStorage.setItem('sidebarCollapsed', String(newValue))
+      setIsCollapsed(prev => {
+        const newValue = !prev
+        localStorage.setItem('sidebarCollapsed', String(newValue))
+        return newValue
+      })
     }
-  }
+  }, [isMobile])
 
-  const openMobileSidebar = () => setIsMobileOpen(true)
-  const closeMobileSidebar = () => setIsMobileOpen(false)
+  const openMobileSidebar = useCallback(() => setIsMobileOpen(true), [])
+  const closeMobileSidebar = useCallback(() => setIsMobileOpen(false), [])
+
+  const handleSetIsCollapsed = useCallback((value: boolean) => {
+    setIsCollapsed(value)
+    localStorage.setItem('sidebarCollapsed', String(value))
+  }, [])
 
   return (
     <SidebarContext.Provider value={{
@@ -57,7 +71,7 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
       isMobileOpen,
       isMobile,
       toggleSidebar,
-      setIsCollapsed,
+      setIsCollapsed: handleSetIsCollapsed,
       openMobileSidebar,
       closeMobileSidebar
     }}>

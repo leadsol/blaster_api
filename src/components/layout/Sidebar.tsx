@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { ChevronDown, ChevronLeft, X } from 'lucide-react'
+import { ChevronLeft, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
@@ -28,11 +28,7 @@ export function Sidebar() {
   const [userName, setUserName] = useState('')
   const [unreadCount, setUnreadCount] = useState(0)
 
-  useEffect(() => {
-    loadUserData()
-    loadUnreadCount()
-  }, [])
-
+  // Define functions before useEffect
   const loadUserData = async () => {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -54,6 +50,12 @@ export function Sidebar() {
       // Silently fail - user might not be logged in
     }
   }
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Initial data fetch on mount is intentional
+    loadUserData()
+    loadUnreadCount()
+  }, [])
 
   const handleLogout = async () => {
     const supabase = createClient()
@@ -104,6 +106,7 @@ export function Sidebar() {
       {/* Header with Logo and Arrow/Close */}
       <div className="flex items-center justify-between px-[30px] pt-[44px] pb-6">
         <Link href="/" onClick={(e) => handleLinkClick(e, '/')}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="https://res.cloudinary.com/dimsgvsze/image/upload/v1768252823/9355f35c-2671-4e32-831f-21d63a876684_zjmk09.png"
             alt="LeadSol Logo"

@@ -12,7 +12,7 @@ export function normalizePhone(phone: string): string {
   if (!phone) return ''
 
   // Remove all non-digit characters
-  let cleaned = phone.replace(/\D/g, '')
+  const cleaned = phone.replace(/\D/g, '')
 
   // If starts with 972, it's already normalized
   if (cleaned.startsWith('972')) {

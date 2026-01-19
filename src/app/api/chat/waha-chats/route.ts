@@ -2,6 +2,20 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { simpleRateLimit } from '@/lib/api-utils'
 import { waha } from '@/lib/waha'
+import { logger } from '@/lib/logger'
+
+// WAHA chat object interface for NOWEB engine
+interface WAHAChat {
+  id: string | { _serialized?: string; user?: string }
+  name?: string
+  lastMessage?: { body?: string }
+  conversationTimestamp?: number
+  timestamp?: number
+  unreadCount?: number
+  pinned?: boolean
+  archived?: boolean
+  picture?: string | null
+}
 
 export async function GET(request: NextRequest) {
   // Rate limit check
@@ -43,16 +57,17 @@ export async function GET(request: NextRequest) {
 
     // Fetch chats directly from WAHA
     // Note: NOWEB engine uses 'conversationTimestamp' not 'timestamp' for sortBy
-    console.log('[WAHA-CHATS] Fetching chats for session:', connection.session_name)
+    logger.debug('[WAHA-CHATS] Fetching chats for session:', connection.session_name)
     const chats = await waha.chats.list(connection.session_name, {
       limit: 100,
-      sortBy: 'conversationTimestamp' as any,
+      // @ts-expect-error NOWEB engine uses 'conversationTimestamp' which isn't in SDK types
+      sortBy: 'conversationTimestamp',
       sortOrder: 'desc'
     })
-    console.log('[WAHA-CHATS] Got', chats?.length || 0, 'chats')
+    logger.debug('[WAHA-CHATS] Got', chats?.length || 0, 'chats')
 
     // Format chats for frontend
-    const formattedChats = chats.map((chat: any) => {
+    const formattedChats = chats.map((chat: WAHAChat) => {
       // Handle chat.id - could be string or object with _serialized
       const chatId = typeof chat.id === 'string' ? chat.id : (chat.id?._serialized || chat.id?.user || String(chat.id))
 
@@ -78,12 +93,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ chats: formattedChats })
   } catch (error) {
     console.error('[WAHA-CHATS] Error fetching chats:', error)
-    // Return the actual error for debugging
     const errorMessage = error instanceof Error ? error.message : String(error)
     return NextResponse.json({
       error: 'Failed to fetch chats from WhatsApp',
       details: errorMessage,
       chats: []
-    }, { status: 200 })
+    }, { status: 500 })
   }
 }

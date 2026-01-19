@@ -178,13 +178,8 @@ export async function POST(request: NextRequest) {
       })
 
       if (filteredRecipients.length > 0) {
-        // Constants for timing - DEFAULT bulk pauses (always active)
-        const MESSAGES_PER_BULK = 30
-        const BULK_PAUSE_SECONDS = [
-          30 * 60,    // After 1st bulk (30 messages): 30 minutes
-          60 * 60,    // After 2nd bulk (60 messages): 1 hour
-          90 * 60,    // After 3rd bulk (90 messages): 1.5 hours - and this repeats
-        ]
+        // Import shared constants for bulk pause timing
+        const { MESSAGES_PER_BULK, BULK_PAUSE_SECONDS } = await import('@/lib/constants')
 
         // Custom pause settings (user-defined, IN ADDITION to default bulk pauses)
         const customPauseAfter = pause_after_messages || 0

@@ -4,8 +4,12 @@ import { waha } from '@/lib/waha'
 import { verifySignatureAppRouter } from '@upstash/qstash/nextjs'
 import { Client as QStashClient } from '@upstash/qstash'
 import { isQStashConfigured } from '@/lib/qstash'
+import { logger } from '@/lib/logger'
+import { getAppUrl } from '@/lib/app-url'
 
-const qstash = new QStashClient({ token: process.env.QSTASH_TOKEN || '' })
+// QStash client - only initialize if token is configured
+const qstashToken = process.env.QSTASH_TOKEN
+const qstash = qstashToken ? new QStashClient({ token: qstashToken }) : null
 
 // Helper function to schedule next pending message immediately (after failure)
 async function scheduleNextMessageImmediately(campaignId: string) {
@@ -22,21 +26,19 @@ async function scheduleNextMessageImmediately(campaignId: string) {
     .single()
 
   if (!nextMessage) {
-    console.log('[SEND-MESSAGE] No next message to schedule')
+    logger.debug('[SEND-MESSAGE] No next message to schedule')
     return
   }
 
   // Schedule it immediately (5 seconds delay to avoid rate limiting)
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL && process.env.NEXT_PUBLIC_APP_URL !== 'http://localhost:3000'
-    ? process.env.NEXT_PUBLIC_APP_URL
-    : (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
+  const appUrl = getAppUrl()
 
   const endpoint = `${appUrl}/api/campaigns/${campaignId}/send-message`
 
-  console.log(`⚡ [SEND-MESSAGE] Scheduling next message ${nextMessage.id} IMMEDIATELY (5s delay) after failure`)
+  logger.debug(`[SEND-MESSAGE] Scheduling next message ${nextMessage.id} IMMEDIATELY (5s delay) after failure`)
 
   // Check if QStash is configured, otherwise use setTimeout fallback
-  if (isQStashConfigured()) {
+  if (isQStashConfigured() && qstash) {
     await qstash.publishJSON({
       url: endpoint,
       body: { messageId: nextMessage.id },
@@ -44,10 +46,10 @@ async function scheduleNextMessageImmediately(campaignId: string) {
     })
   } else {
     // Localhost fallback - use setTimeout
-    console.log(`[FALLBACK] Scheduling immediate retry for message ${nextMessage.id} with 5s delay`)
+    logger.debug(`[FALLBACK] Scheduling immediate retry for message ${nextMessage.id} with 5s delay`)
     setTimeout(async () => {
       try {
-        console.log(`[FALLBACK] Retrying message ${nextMessage.id} now`)
+        logger.debug(`[FALLBACK] Retrying message ${nextMessage.id} now`)
         await fetch(endpoint, {
           method: 'POST',
           headers: {
@@ -57,7 +59,7 @@ async function scheduleNextMessageImmediately(campaignId: string) {
           body: JSON.stringify({ messageId: nextMessage.id })
         })
       } catch (err) {
-        console.error(`[FALLBACK] Failed to retry message ${nextMessage.id}:`, err)
+        logger.error(`[FALLBACK] Failed to retry message ${nextMessage.id}:`, err)
       }
     }, 5000)
   }
@@ -89,13 +91,13 @@ async function handler(
       .single()
 
     if (messageError || !message) {
-      console.error('[SEND-MESSAGE] Message not found:', messageId)
+      logger.error('[SEND-MESSAGE] Message not found:', messageId)
       return NextResponse.json({ error: 'Message not found' }, { status: 404 })
     }
 
     // Check if message is still pending
     if (message.status !== 'pending') {
-      console.log(`[SEND-MESSAGE] Message ${messageId} already processed (status: ${message.status})`)
+      logger.debug(`[SEND-MESSAGE] Message ${messageId} already processed (status: ${message.status})`)
       return NextResponse.json({ success: true, skipped: true })
     }
 
@@ -110,19 +112,19 @@ async function handler(
       .single()
 
     if (campaignError || !campaign) {
-      console.error('[SEND-MESSAGE] Campaign not found:', campaignId)
+      logger.error('[SEND-MESSAGE] Campaign not found:', campaignId)
       return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
     }
 
     // Check if campaign is still running
     if (campaign.status !== 'running') {
-      console.log(`[SEND-MESSAGE] Campaign ${campaignId} not running (status: ${campaign.status})`)
+      logger.debug(`[SEND-MESSAGE] Campaign ${campaignId} not running (status: ${campaign.status})`)
       return NextResponse.json({ success: true, skipped: true, reason: 'Campaign not running' })
     }
 
     // Check if campaign is active (is_active toggle)
     if (campaign.is_active === false) {
-      console.log(`[SEND-MESSAGE] Campaign ${campaignId} is deactivated (is_active: false)`)
+      logger.debug(`[SEND-MESSAGE] Campaign ${campaignId} is deactivated (is_active: false)`)
       return NextResponse.json({ success: true, skipped: true, reason: 'Campaign is deactivated' })
     }
 
@@ -138,7 +140,7 @@ async function handler(
       const isWithinActiveHours = currentTime >= startTime && currentTime <= endTime
 
       if (!isWithinActiveHours) {
-        console.log(`⏰ [SEND-MESSAGE] Outside active hours (${startTime}-${endTime}, current: ${currentTime}). Rescheduling message ${messageId}`)
+        logger.debug(`[SEND-MESSAGE] Outside active hours (${startTime}-${endTime}, current: ${currentTime}). Rescheduling message ${messageId}`)
 
         // Calculate delay until next active hours start
         const [startHour, startMinute] = startTime.split(':').map(Number)
@@ -153,24 +155,22 @@ async function handler(
         const delaySeconds = Math.floor((nextActiveStart.getTime() - now.getTime()) / 1000)
 
         // Reschedule the message for next active hours
-        const appUrl = process.env.NEXT_PUBLIC_APP_URL && process.env.NEXT_PUBLIC_APP_URL !== 'http://localhost:3000'
-          ? process.env.NEXT_PUBLIC_APP_URL
-          : (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
+        const appUrl = getAppUrl()
 
         const endpoint = `${appUrl}/api/campaigns/${campaignId}/send-message`
 
         // Use QStash if available, otherwise fallback to setTimeout for localhost
-        if (isQStashConfigured()) {
+        if (isQStashConfigured() && qstash) {
           await qstash.publishJSON({
             url: endpoint,
             body: { messageId },
             delay: delaySeconds
           })
-          console.log(`⏰ [SEND-MESSAGE] Rescheduled message via QStash for ${nextActiveStart.toISOString()} (in ${delaySeconds}s)`)
+          logger.debug(`[SEND-MESSAGE] Rescheduled message via QStash for ${nextActiveStart.toISOString()} (in ${delaySeconds}s)`)
         } else {
           // Fallback: pause campaign when outside active hours on localhost
           // This is safer than trying to use setTimeout for potentially hours
-          console.log(`⏰ [SEND-MESSAGE] Outside active hours on localhost - auto-pausing campaign`)
+          logger.debug(`[SEND-MESSAGE] Outside active hours on localhost - auto-pausing campaign`)
 
           await supabase
             .from('campaigns')
@@ -180,7 +180,7 @@ async function handler(
             })
             .eq('id', campaignId)
 
-          console.log(`⏰ [SEND-MESSAGE] Campaign paused until active hours resume at ${nextActiveStart.toISOString()}`)
+          logger.debug(`[SEND-MESSAGE] Campaign paused until active hours resume at ${nextActiveStart.toISOString()}`)
         }
 
         return NextResponse.json({ success: true, rescheduled: true, nextAttempt: nextActiveStart.toISOString() })
@@ -202,7 +202,7 @@ async function handler(
         .single()
 
       if (otherRunningCampaign) {
-        console.error(`❌ [SEND-MESSAGE] Device ${deviceConnection.session_name} is busy in campaign "${otherRunningCampaign.name}"`)
+        logger.error(`[SEND-MESSAGE] Device ${deviceConnection.session_name} is busy in campaign "${otherRunningCampaign.name}"`)
         deviceConnection = null // Mark as unavailable
       }
     }
@@ -217,8 +217,7 @@ async function handler(
 
       if (devices && devices.length > 0) {
         // Filter devices that haven't reached daily limit
-        const BASE_LIMIT = 90
-        const VARIATION_BONUS = 10
+        const { DEVICE_BASE_LIMIT: BASE_LIMIT, DEVICE_VARIATION_BONUS: VARIATION_BONUS } = await import('@/lib/constants')
         const todayStart = new Date()
         todayStart.setHours(0, 0, 0, 0)
 
@@ -239,7 +238,7 @@ async function handler(
             .single()
 
           if (otherRunningCampaign) {
-            console.log(`⚠️ [SEND-MESSAGE] Device ${device.session_name} is busy in campaign "${otherRunningCampaign.name}" - skipping`)
+            logger.debug(`[SEND-MESSAGE] Device ${device.session_name} is busy in campaign "${otherRunningCampaign.name}" - skipping`)
             continue // Skip this device - it's busy
           }
 
@@ -272,7 +271,7 @@ async function handler(
             .gte('sent_at', todayStart.toISOString())
 
           const messagesSentToday = sentToday || 0
-          console.log(`[SEND-MESSAGE] Device ${device.session_name} (${device.phone_number}): sent ${messagesSentToday}/${deviceLimit} today`)
+          logger.debug(`[SEND-MESSAGE] Device ${device.session_name} (${device.phone_number}): sent ${messagesSentToday}/${deviceLimit} today`)
 
           // Only include devices that haven't reached their limit
           if (messagesSentToday < deviceLimit) {
@@ -283,16 +282,16 @@ async function handler(
         if (availableDevices.length > 0) {
           // Pick random device from available ones
           deviceConnection = availableDevices[Math.floor(Math.random() * availableDevices.length)]
-          console.log(`[SEND-MESSAGE] Selected device: ${deviceConnection.session_name} (${availableDevices.length} available)`)
+          logger.debug(`[SEND-MESSAGE] Selected device: ${deviceConnection.session_name} (${availableDevices.length} available)`)
         } else {
-          console.error('[SEND-MESSAGE] All devices reached daily limit')
+          logger.error('[SEND-MESSAGE] All devices reached daily limit')
           deviceConnection = null
         }
       }
     }
 
     if (!deviceConnection || deviceConnection.status !== 'connected') {
-      console.error('[SEND-MESSAGE] No connected device available')
+      logger.error('[SEND-MESSAGE] No connected device available')
       await supabase
         .from('campaign_messages')
         .update({
@@ -330,7 +329,7 @@ async function handler(
       }
     }
 
-    console.log(`[SEND-MESSAGE] Sending to ${phone} via ${deviceConnection.session_name}`)
+    logger.debug(`[SEND-MESSAGE] Sending to ${phone} via ${deviceConnection.session_name}`)
 
     try {
       let response: { id: string } = { id: `msg_${Date.now()}` }
@@ -351,7 +350,7 @@ async function handler(
       // Send media if configured
       if (campaign.media_url && campaign.media_type) {
         try {
-          console.log(`[SEND-MESSAGE] Sending ${campaign.media_type} to ${phone}`)
+          logger.debug(`[SEND-MESSAGE] Sending ${campaign.media_type} to ${phone}`)
           if (campaign.media_type === 'image') {
             const mediaResponse = await waha.messages.sendImage({
               session: deviceConnection.session_name,
@@ -387,7 +386,7 @@ async function handler(
           }
           mediaSent = true
         } catch (mediaError) {
-          console.error(`[SEND-MESSAGE] Media failed for ${phone}:`, mediaError)
+          logger.error(`[SEND-MESSAGE] Media failed for ${phone}:`, mediaError)
         }
       }
 
@@ -403,7 +402,7 @@ async function handler(
           })
           pollSent = true
         } catch (pollError) {
-          console.error(`[SEND-MESSAGE] Poll failed for ${phone}:`, pollError)
+          logger.error(`[SEND-MESSAGE] Poll failed for ${phone}:`, pollError)
         }
       }
 
@@ -437,11 +436,11 @@ async function handler(
         .update({ sent_count: sentCount?.length || 0 })
         .eq('id', campaignId)
 
-      console.log(`[SEND-MESSAGE] Successfully sent message ${messageId} to ${phone}`)
+      logger.debug(`[SEND-MESSAGE] Successfully sent message ${messageId} to ${phone}`)
       return NextResponse.json({ success: true, messageId: response.id })
 
     } catch (sendError) {
-      console.error(`[SEND-MESSAGE] Failed to send to ${phone}:`, sendError)
+      logger.error(`[SEND-MESSAGE] Failed to send to ${phone}:`, sendError)
 
       await supabase
         .from('campaign_messages')
@@ -471,7 +470,7 @@ async function handler(
     }
 
   } catch (error) {
-    console.error('[SEND-MESSAGE] Error:', error)
+    logger.error('[SEND-MESSAGE] Error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

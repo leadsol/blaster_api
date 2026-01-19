@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { logger } from '@/lib/logger'
 import {
   Plus,
   RefreshCw,
@@ -188,7 +189,7 @@ export default function ConnectionsPage() {
           table: 'connections'
         },
         (payload) => {
-          console.log('Realtime update received:', payload)
+          logger.debug('Realtime update received:', payload)
 
           if (payload.eventType === 'INSERT') {
             // New connection added - check if it already exists to prevent duplicates
@@ -212,7 +213,7 @@ export default function ConnectionsPage() {
             const updated = payload.new as Connection
             const old = payload.old as Partial<Connection>
 
-            console.log('Connection updated:', updated.id, 'status:', updated.status)
+            logger.debug('Connection updated:', updated.id, 'status:', updated.status)
 
             // Update the connection in state
             setConnections(prev =>
@@ -266,12 +267,12 @@ export default function ConnectionsPage() {
         }
       )
       .subscribe((status, err) => {
-        console.log('Connections page realtime subscription status:', status, err)
+        logger.debug('Connections page realtime subscription status:', status, err)
       })
 
     // Cleanup subscription on unmount
     return () => {
-      console.log('Cleaning up connections realtime subscription')
+      logger.debug('Cleaning up connections realtime subscription')
       supabase.removeChannel(channel)
     }
   }, []) // Empty deps - stable subscription
@@ -335,7 +336,7 @@ export default function ConnectionsPage() {
       })
 
       const wahaData = await wahaResponse.json()
-      console.log('WAHA response:', wahaData)
+      logger.debug('WAHA response:', wahaData)
 
       if (!wahaResponse.ok) {
         throw new Error(`Failed to create WAHA session: ${JSON.stringify(wahaData)}`)
@@ -365,12 +366,13 @@ export default function ConnectionsPage() {
         await fetchLinkCode(wahaSessionName)
         setStep(2)
       }
-    } catch (error: any) {
-      console.error('Error creating connection:', error?.message || error)
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'שגיאה לא ידועה'
+      console.error('Error creating connection:', errorMessage)
       setAlertModal({
         isOpen: true,
         title: 'שגיאה ביצירת החיבור',
-        message: error?.message || 'שגיאה לא ידועה',
+        message: errorMessage,
         type: 'error'
       })
     } finally {
@@ -390,12 +392,12 @@ export default function ConnectionsPage() {
 
       // If not ready yet and we have retries left, wait and try again
       if (retries > 0) {
-        console.log(`QR not ready, retrying in 2 seconds... (${retries} retries left)`)
+        logger.debug(`QR not ready, retrying in 2 seconds... (${retries} retries left)`)
         await new Promise(resolve => setTimeout(resolve, 2000))
         return fetchQRCode(sessionName, retries - 1)
       }
 
-      console.log('QR not available after retries:', data)
+      logger.debug('QR not available after retries:', data)
       return false
     } catch (error) {
       console.error('Error fetching QR code:', error)
@@ -411,14 +413,14 @@ export default function ConnectionsPage() {
     try {
       // First, wait for session to be ready (in SCAN_QR_CODE state)
       if (retries === 8) {
-        console.log('Waiting for session to be ready...')
+        logger.debug('Waiting for session to be ready...')
         await new Promise(resolve => setTimeout(resolve, 3000))
 
         // Check if session is ready
         const statusResponse = await fetch(`/api/waha/sessions/${sessionName}/status`)
         if (statusResponse.ok) {
           const statusData = await statusResponse.json()
-          console.log('Session status:', statusData.status)
+          logger.debug('Session status:', statusData.status)
           if (statusData.status !== 'SCAN_QR_CODE' && statusData.status !== 'WORKING') {
             // Session not ready yet, wait more
             await new Promise(resolve => setTimeout(resolve, 2000))
@@ -428,7 +430,7 @@ export default function ConnectionsPage() {
 
       // Format phone number to international format (Israeli: 05X → 9725X)
       const cleanPhone = formatIsraeliPhone(phoneNumber)
-      console.log(`Requesting code for phone: ${cleanPhone}`)
+      logger.debug(`Requesting code for phone: ${cleanPhone}`)
 
       const response = await fetch(`/api/waha/sessions/${sessionName}/auth/request-code`, {
         method: 'POST',
@@ -437,7 +439,7 @@ export default function ConnectionsPage() {
       })
 
       const data = await response.json()
-      console.log('Request code response:', data)
+      logger.debug('Request code response:', data)
 
       if (response.ok && data.code) {
         setLinkCode(data.code)
@@ -446,7 +448,7 @@ export default function ConnectionsPage() {
 
       // If not ready yet and we have retries left, wait and try again
       if (retries > 0) {
-        console.log(`Code not ready, retrying in 3 seconds... (${retries} retries left)`)
+        logger.debug(`Code not ready, retrying in 3 seconds... (${retries} retries left)`)
         await new Promise(resolve => setTimeout(resolve, 3000))
         return fetchLinkCode(sessionName, retries - 1)
       }
@@ -488,7 +490,7 @@ export default function ConnectionsPage() {
 
       if (statusResponse.ok) {
         const statusData = await statusResponse.json()
-        console.log('Session status before code request:', statusData.status)
+        logger.debug('Session status before code request:', statusData.status)
 
         // Session needs to be in SCAN_QR_CODE state to request pairing code
         if (statusData.status !== 'SCAN_QR_CODE') {
@@ -500,7 +502,7 @@ export default function ConnectionsPage() {
 
       // If session is not ready, restart it
       if (needsRestart) {
-        console.log('Restarting session to get pairing code...')
+        logger.debug('Restarting session to get pairing code...')
         const restartResponse = await fetch(`/api/waha/sessions/${connectionToRequestCode.session_name}/restart`, {
           method: 'POST',
         })
@@ -517,7 +519,7 @@ export default function ConnectionsPage() {
           const checkStatus = await fetch(`/api/waha/sessions/${connectionToRequestCode.session_name}/status`)
           if (checkStatus.ok) {
             const checkData = await checkStatus.json()
-            console.log(`Session status check ${attempts + 1}:`, checkData.status)
+            logger.debug(`Session status check ${attempts + 1}:`, checkData.status)
             if (checkData.status === 'SCAN_QR_CODE') {
               break
             }
@@ -532,7 +534,7 @@ export default function ConnectionsPage() {
 
       // Format phone number to international format (Israeli: 05X → 9725X)
       const cleanPhone = formatIsraeliPhone(codeRequestPhone)
-      console.log(`Requesting code for phone: ${cleanPhone}`)
+      logger.debug(`Requesting code for phone: ${cleanPhone}`)
 
       const response = await fetch(`/api/waha/sessions/${connectionToRequestCode.session_name}/auth/request-code`, {
         method: 'POST',
@@ -541,7 +543,7 @@ export default function ConnectionsPage() {
       })
 
       const data = await response.json()
-      console.log('Code request response:', data)
+      logger.debug('Code request response:', data)
 
       if (response.ok && data.code) {
         setLinkCode(data.code)
@@ -1553,6 +1555,7 @@ export default function ConnectionsPage() {
                   {(connectionMethod === 'scan' || connectionMethod === 'send') && (
                     <div className="bg-white rounded-xl p-6 mb-6">
                       {qrCode ? (
+                        /* eslint-disable-next-line @next/next/no-img-element */
                         <img src={`data:image/png;base64,${qrCode}`} alt="QR Code" className="w-full max-w-[200px] mx-auto" />
                       ) : (
                         <div className="w-[200px] h-[200px] mx-auto flex flex-col items-center justify-center">
@@ -1699,6 +1702,7 @@ export default function ConnectionsPage() {
 
                 <div className="bg-white rounded-xl p-4 mb-4">
                   {qrCode ? (
+                    /* eslint-disable-next-line @next/next/no-img-element */
                     <img src={`data:image/png;base64,${qrCode}`} alt="QR Code" className="w-full" />
                   ) : (
                     <div className="h-64 flex flex-col items-center justify-center">

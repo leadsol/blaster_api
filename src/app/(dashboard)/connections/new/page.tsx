@@ -117,6 +117,7 @@ export default function NewConnectionPage() {
 
                 {/* Phone mockup */}
                 <div className="mt-6 flex justify-center items-start flex-1">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={method.mockupImage}
                     alt={method.title}

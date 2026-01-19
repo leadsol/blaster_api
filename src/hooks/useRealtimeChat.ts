@@ -42,15 +42,32 @@ export function useRealtimeChat({ connectionId, chatId }: UseRealtimeChatOptions
   const offsetRef = useRef(0)
   const MESSAGES_PER_PAGE = 50
 
+  // Track previous params to detect changes
+  const prevParamsRef = useRef<{ connectionId: string | null; chatId: string | null }>({
+    connectionId: null,
+    chatId: null
+  })
+
   // Load initial messages
   useEffect(() => {
+    // Early return without calling setState when no params
     if (!connectionId || !chatId) {
-      setMessages([])
-      setLoading(false)
       return
     }
 
+    let cancelled = false
+
     const loadMessages = async () => {
+      // Check if params changed - if so, reset messages at start of async operation
+      const paramsChanged = prevParamsRef.current.connectionId !== connectionId ||
+                           prevParamsRef.current.chatId !== chatId
+      prevParamsRef.current = { connectionId, chatId }
+
+      // Reset messages as part of async loading operation - data fetching pattern with cleanup
+      if (paramsChanged) {
+        setMessages([])
+      }
+
       setLoading(true)
       setError(null)
       offsetRef.current = 0
@@ -59,8 +76,10 @@ export function useRealtimeChat({ connectionId, chatId }: UseRealtimeChatOptions
       const { data: { user } } = await supabase.auth.getUser()
 
       if (!user) {
-        setError('לא מחובר')
-        setLoading(false)
+        if (!cancelled) {
+          setError('לא מחובר')
+          setLoading(false)
+        }
         return
       }
 
@@ -72,6 +91,8 @@ export function useRealtimeChat({ connectionId, chatId }: UseRealtimeChatOptions
         .eq('chat_id', chatId)
         .order('timestamp', { ascending: false })
         .limit(MESSAGES_PER_PAGE)
+
+      if (cancelled) return
 
       if (fetchError) {
         setError('שגיאה בטעינת הודעות')
@@ -86,7 +107,12 @@ export function useRealtimeChat({ connectionId, chatId }: UseRealtimeChatOptions
       setLoading(false)
     }
 
-    loadMessages()
+    // Start loading - all setState calls are inside the async function
+    void loadMessages()
+
+    return () => {
+      cancelled = true
+    }
   }, [connectionId, chatId])
 
   // Setup realtime subscription

@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 interface Connection {
@@ -25,7 +25,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [selectedConnection, setSelectedConnection] = useState<Connection | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
-  const loadConnections = async () => {
+  const loadConnections = useCallback(async () => {
     setIsLoading(true)
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -43,17 +43,18 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     if (data && data.length > 0) {
       setConnections(data)
       // Select the first connected one, or just the first one
-      if (!selectedConnection) {
-        const connected = data.find(c => c.status === 'connected') || data[0]
-        setSelectedConnection(connected)
-      }
+      setSelectedConnection(prev => {
+        if (prev) return prev
+        return data.find(c => c.status === 'connected') || data[0]
+      })
     }
     setIsLoading(false)
-  }
+  }, [])
 
   useEffect(() => {
-    loadConnections()
-  }, [])
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Initial data fetch on mount is intentional
+    void loadConnections()
+  }, [loadConnections])
 
   return (
     <ConnectionContext.Provider value={{

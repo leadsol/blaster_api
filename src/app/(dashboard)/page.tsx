@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { logger } from '@/lib/logger'
 import { Search, Plus, MoreVertical, Calendar, Users, MessageSquare, CheckCircle } from 'lucide-react'
 import Link from 'next/link'
 import { format } from 'date-fns'
@@ -52,7 +53,25 @@ export default function CampaignsPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
 
+  // Define loadCampaigns before useEffect
+  const loadCampaigns = async () => {
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from('campaigns')
+      .select('*, contact_lists(name)')
+      .order('created_at', { ascending: false })
+
+    if (!error && data) {
+      setCampaigns(data)
+      if (data.length > 0) {
+        setSelectedCampaign(data[0])
+      }
+    }
+    setLoading(false)
+  }
+
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Initial data fetch on mount is intentional
     loadCampaigns()
 
     // Set up realtime subscription for campaigns
@@ -68,7 +87,7 @@ export default function CampaignsPage() {
           table: 'campaigns'
         },
         (payload) => {
-          console.log('[REALTIME] Campaign change:', payload)
+          logger.debug('[REALTIME] Campaign change:', payload)
           if (payload.eventType === 'INSERT') {
             setCampaigns(prev => [payload.new as Campaign, ...prev])
           } else if (payload.eventType === 'UPDATE') {
@@ -92,22 +111,6 @@ export default function CampaignsPage() {
     }
   }, [])
 
-  const loadCampaigns = async () => {
-    const supabase = createClient()
-    const { data, error } = await supabase
-      .from('campaigns')
-      .select('*, contact_lists(name)')
-      .order('created_at', { ascending: false })
-
-    if (!error && data) {
-      setCampaigns(data)
-      if (data.length > 0) {
-        setSelectedCampaign(data[0])
-      }
-    }
-    setLoading(false)
-  }
-
   const filteredCampaigns = campaigns.filter(c =>
     c.name.toLowerCase().includes(searchQuery.toLowerCase())
   )
@@ -128,6 +131,7 @@ export default function CampaignsPage() {
   // Load recipients when campaign is selected with realtime updates
   useEffect(() => {
     if (!selectedCampaign) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Clearing state when no campaign is selected
       setRecipients([])
       return
     }
@@ -142,7 +146,7 @@ export default function CampaignsPage() {
         .limit(50)
 
       if (!error && data) {
-        setRecipients(data.map((r: any) => ({
+        setRecipients(data.map((r: { id: string; name?: string; phone?: string; status?: string; sent_at?: string }) => ({
           id: r.id,
           name: r.name || 'ללא שם',
           phone: r.phone || '',
@@ -167,7 +171,7 @@ export default function CampaignsPage() {
           filter: `campaign_id=eq.${selectedCampaign.id}`
         },
         (payload) => {
-          console.log('[REALTIME] Message change:', payload)
+          logger.debug('[REALTIME] Message change:', payload)
           if (payload.eventType === 'UPDATE') {
             setRecipients(prev => prev.map(r =>
               r.id === payload.new.id
@@ -186,6 +190,7 @@ export default function CampaignsPage() {
     return () => {
       supabase.removeChannel(messagesChannel)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCampaign?.id])
 
   return (

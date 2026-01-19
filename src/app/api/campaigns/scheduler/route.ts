@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { getAppUrl } from '@/lib/app-url'
+import { logger } from '@/lib/logger'
 
 // This endpoint should be called by a cron job (e.g., every minute)
 // Vercel Cron: https://vercel.com/docs/cron-jobs
@@ -12,7 +14,7 @@ export async function GET(request: NextRequest) {
     // Verify cron secret for security
     const authHeader = request.headers.get('authorization')
     if (CRON_SECRET && authHeader !== `Bearer ${CRON_SECRET}`) {
-      console.error('Invalid cron secret')
+      logger.error('Invalid cron secret')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -21,7 +23,7 @@ export async function GET(request: NextRequest) {
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
     if (!supabaseUrl || !serviceRoleKey) {
-      console.error('Missing Supabase configuration')
+      logger.error('Missing Supabase configuration')
       return NextResponse.json({ error: 'Server configuration error' }, { status: 500 })
     }
 
@@ -58,7 +60,7 @@ export async function GET(request: NextRequest) {
         }
 
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/campaigns/${campaign.id}/process`,
+          `${getAppUrl()}/api/campaigns/${campaign.id}/process`,
           {
             method: 'POST',
             headers,

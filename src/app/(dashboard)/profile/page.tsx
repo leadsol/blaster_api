@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { User, CreditCard, FileText, Clock, Check, X, Edit2, Camera, Save } from 'lucide-react'
+import { User, CreditCard, FileText, Clock, Check, X, Camera, Save } from 'lucide-react'
 import { useTheme } from '@/contexts/ThemeContext'
 
 interface UserProfile {
@@ -31,36 +31,14 @@ interface Invoice {
   description: string
 }
 
-const mockActivityLogs: ActivityLog[] = [
-  { id: '1', action: 'קמפיין נשלח', description: 'קמפיין מבצע חורף - הושלם בהצלחה', date: '06/07/2025', time: '12:00', status: 'success' },
-  { id: '2', action: 'קמפיין נשלח', description: 'קמפיין וחכר חודשי - הושלם VIP', date: '06/07/2025', time: '09:30', status: 'success' },
-  { id: '3', action: 'הודעות נכשלו', description: 'קמפיין וחכר חודשי - תקלות תקשורת', date: '28/06/2025', time: '14:45', status: 'failed' },
-  { id: '4', action: 'הגדרות שונו', description: 'עדכון פרופיל - החלפת סיסמה', date: '26/06/2025', time: '06:15', status: 'success' },
-  { id: '5', action: 'הודעות תוזמנו', description: 'תזמון קמפיין לתאריך 10/04/2025', date: '24/06/2025', time: '17:00', status: 'pending' },
-  { id: '6', action: 'קמפיין נשלח', description: 'קמפיין חג שמח', date: '10/04/2025', time: '11:30', status: 'success' },
-  { id: '7', action: 'קמפיין נשלח', description: 'קמפיין הזמנה לאירוע', date: '10/04/2025', time: '15:10', status: 'success' },
-  { id: '8', action: 'הודעות נכשלו', description: 'קמפיין מכירות - מכסה חרגה', date: '18/04/2025', time: '07:50', status: 'failed' },
-  { id: '9', action: 'הודעות תוזמנו', description: 'תזכורת פגישה בזום', date: '15/04/2025', time: '19:40', status: 'pending' },
-]
-
-const mockInvoices: Invoice[] = [
-  { id: '1', date: '01/07/2025', amount: '199 ₪', status: 'paid', description: 'חבילה מקצועית - יולי 2025' },
-  { id: '2', date: '01/06/2025', amount: '199 ₪', status: 'paid', description: 'חבילה מקצועית - יוני 2025' },
-  { id: '3', date: '01/05/2025', amount: '199 ₪', status: 'paid', description: 'חבילה מקצועית - מאי 2025' },
-  { id: '4', date: '01/04/2025', amount: '99 ₪', status: 'paid', description: 'חבילה בסיסית - אפריל 2025' },
-]
-
 export default function ProfilePage() {
   const { darkMode } = useTheme()
   const [activeTab, setActiveTab] = useState<'details' | 'activity' | 'billing' | 'invoices'>('details')
   const [profile, setProfile] = useState<UserProfile | null>(null)
-  const [isEditing, setIsEditing] = useState(false)
-  const [loading, setLoading] = useState(true)
+  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([])
+  const [invoices, setInvoices] = useState<Invoice[]>([])
 
-  useEffect(() => {
-    loadProfile()
-  }, [])
-
+  // Define functions before useEffect
   const loadProfile = async () => {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -68,8 +46,63 @@ export default function ProfilePage() {
       const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
       if (data) setProfile(data)
     }
-    setLoading(false)
   }
+
+  const loadActivityLogs = async () => {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    // Fetch recent campaigns as activity logs
+    const { data: campaigns } = await supabase
+      .from('campaigns')
+      .select('id, name, status, created_at, sent_count, failed_count')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(20)
+
+    if (campaigns) {
+      const logs: ActivityLog[] = campaigns.map(campaign => {
+        const createdAt = new Date(campaign.created_at)
+        let action = 'קמפיין נוצר'
+        let status: 'success' | 'failed' | 'pending' = 'pending'
+
+        if (campaign.status === 'completed') {
+          action = 'קמפיין הושלם'
+          status = 'success'
+        } else if (campaign.status === 'failed') {
+          action = 'קמפיין נכשל'
+          status = 'failed'
+        } else if (campaign.status === 'running') {
+          action = 'קמפיין פעיל'
+          status = 'pending'
+        } else if (campaign.status === 'paused') {
+          action = 'קמפיין מושהה'
+          status = 'pending'
+        }
+
+        return {
+          id: campaign.id,
+          action,
+          description: `${campaign.name} - ${campaign.sent_count || 0} הודעות נשלחו`,
+          date: createdAt.toLocaleDateString('he-IL'),
+          time: createdAt.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }),
+          status
+        }
+      })
+      setActivityLogs(logs)
+    }
+
+    // Note: Invoices would typically come from a payment system like Stripe
+    // For now, we leave it empty - implement when payment system is integrated
+    setInvoices([])
+  }
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Initial data fetch on mount is intentional
+    loadProfile()
+    loadActivityLogs()
+  }, [])
 
   const tabs = [
     { id: 'details', label: 'פרטי משתמש', icon: User },
@@ -165,6 +198,7 @@ export default function ProfilePage() {
                 <div className="relative flex-shrink-0">
                   <div className="w-16 h-16 sm:w-20 sm:h-20 lg:w-24 lg:h-24 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center overflow-hidden">
                     {profile?.avatar_url ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
                       <img src={profile.avatar_url} alt="" className="w-full h-full object-cover" />
                     ) : (
                       <span className="text-xl sm:text-2xl lg:text-3xl text-white font-medium">
@@ -205,7 +239,7 @@ export default function ProfilePage() {
                       <label className={`block text-xs sm:text-sm mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>טלפון</label>
                       <input
                         type="tel"
-                        defaultValue={profile?.phone || '054-0000000'}
+                        defaultValue={profile?.phone || ''}
                         className={`w-full px-3 sm:px-4 py-2 sm:py-2.5 ${darkMode ? 'bg-white/5 border-white/10 text-white' : 'bg-gray-50 border-gray-200 text-gray-900'} border rounded-lg focus:outline-none text-sm sm:text-base`}
                       />
                     </div>
@@ -226,7 +260,7 @@ export default function ProfilePage() {
                       <label className={`block text-xs sm:text-sm mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>אימייל</label>
                       <input
                         type="email"
-                        defaultValue={profile?.email || 'ahoneman@gmail.com'}
+                        defaultValue={profile?.email || ''}
                         className={`w-full px-3 sm:px-4 py-2 sm:py-2.5 ${darkMode ? 'bg-white/5 border-white/10 text-white' : 'bg-gray-50 border-gray-200 text-gray-900'} border rounded-lg focus:outline-none text-sm sm:text-base`}
                       />
                     </div>
@@ -262,7 +296,7 @@ export default function ProfilePage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {mockActivityLogs.map((log) => (
+                    {activityLogs.map((log) => (
                       <tr key={log.id} className={`border-t ${darkMode ? 'border-white/5' : 'border-gray-100'}`}>
                         <td className={`p-2 sm:p-3 lg:p-4 ${darkMode ? 'text-white' : 'text-gray-900'} text-xs sm:text-sm`}>{log.date}</td>
                         <td className={`p-2 sm:p-3 lg:p-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'} text-xs sm:text-sm`}>{log.time}</td>
@@ -312,7 +346,7 @@ export default function ProfilePage() {
                   <ul className={`space-y-1.5 sm:space-y-2 text-xs sm:text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                     <li className="flex items-center gap-1.5 sm:gap-2"><Check className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${darkMode ? 'text-gray-400' : 'text-gray-400'}`} /> הודעות ללא הגבלה</li>
                     <li className="flex items-center gap-1.5 sm:gap-2"><Check className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${darkMode ? 'text-gray-400' : 'text-gray-400'}`} /> חיבורים ללא הגבלה</li>
-                    <li className="flex items-center gap-1.5 sm:gap-2"><Check className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${darkMode ? 'text-gray-400' : 'text-gray-400'}`} /> כל הפיצ'רים</li>
+                    <li className="flex items-center gap-1.5 sm:gap-2"><Check className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${darkMode ? 'text-gray-400' : 'text-gray-400'}`} /> כל הפיצ&apos;רים</li>
                   </ul>
                   <button className="w-full mt-3 sm:mt-4 py-1.5 sm:py-2 border border-[#25D366] text-[#25D366] rounded-lg hover:bg-[#25D366]/10 text-xs sm:text-sm">
                     שדרג עכשיו
@@ -349,7 +383,7 @@ export default function ProfilePage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {mockInvoices.map((invoice) => (
+                    {invoices.length > 0 ? invoices.map((invoice) => (
                       <tr key={invoice.id} className={`border-t ${darkMode ? 'border-white/5' : 'border-gray-100'}`}>
                         <td className={`p-2 sm:p-3 lg:p-4 ${darkMode ? 'text-white' : 'text-gray-900'} text-xs sm:text-sm`}>{invoice.date}</td>
                         <td className={`p-2 sm:p-3 lg:p-4 ${darkMode ? 'text-gray-300' : 'text-gray-600'} text-xs sm:text-sm`}>{invoice.description}</td>
@@ -365,14 +399,20 @@ export default function ProfilePage() {
                           <button className="text-[#25D366] text-xs sm:text-sm hover:underline">הורד PDF</button>
                         </td>
                       </tr>
-                    ))}
+                    )) : (
+                      <tr>
+                        <td colSpan={5} className={`p-8 text-center ${darkMode ? 'text-gray-400' : 'text-gray-500'} text-sm`}>
+                          אין חשבוניות להצגה
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
 
               {/* Mobile Cards */}
               <div className="sm:hidden divide-y divide-gray-100 dark:divide-white/5">
-                {mockInvoices.map((invoice) => (
+                {invoices.length > 0 ? invoices.map((invoice) => (
                   <div key={invoice.id} className="p-3">
                     <div className="flex items-center justify-between mb-2">
                       <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{invoice.date}</span>
@@ -388,7 +428,11 @@ export default function ProfilePage() {
                       <button className="text-[#25D366] text-xs hover:underline">הורד PDF</button>
                     </div>
                   </div>
-                ))}
+                )) : (
+                  <div className={`p-8 text-center ${darkMode ? 'text-gray-400' : 'text-gray-500'} text-sm`}>
+                    אין חשבוניות להצגה
+                  </div>
+                )}
               </div>
             </div>
           )}

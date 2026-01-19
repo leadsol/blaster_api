@@ -152,8 +152,6 @@ export async function POST(request: NextRequest) {
     const body: WebhookBody = JSON.parse(rawBody)
     const { event, session, payload } = body
 
-    console.log('Webhook received:', { event, session })
-
     switch (event) {
       // Message Events
       case 'message':
@@ -244,7 +242,8 @@ export async function POST(request: NextRequest) {
         break
 
       default:
-        console.log('Unhandled webhook event:', event, payload)
+        // Unhandled event type - no action needed
+        break
     }
 
     return NextResponse.json({ success: true })
@@ -318,10 +317,10 @@ async function handleIncomingMessage(sessionName: string, payload: MessagePayloa
     }, { onConflict: 'connection_id,chat_id' })
 }
 
-async function handleAnyMessage(sessionName: string, payload: MessagePayload) {
+async function handleAnyMessage(_sessionName: string, _payload: MessagePayload) {
   // Handle all messages including outgoing ones
   // This can be used for logging or syncing sent messages
-  console.log('Message (any):', { session: sessionName, id: payload.id, fromMe: payload.fromMe })
+  // Currently no-op - implement when message sync feature is needed
 }
 
 async function handleMessageAck(sessionName: string, payload: MessageAckPayload) {
@@ -391,9 +390,9 @@ async function handleMessageRevoked(sessionName: string, payload: { id: string; 
     .eq('waha_message_id', payload.id)
 }
 
-async function handleMessageWaiting(sessionName: string, payload: MessagePayload) {
+async function handleMessageWaiting(_sessionName: string, _payload: MessagePayload) {
   // Handle messages waiting to be sent (offline queue)
-  console.log('Message waiting:', { session: sessionName, id: payload.id })
+  // Currently no-op - implement when offline queue feature is needed
 }
 
 // ============================================================================
@@ -401,11 +400,6 @@ async function handleMessageWaiting(sessionName: string, payload: MessagePayload
 // ============================================================================
 
 async function handleSessionStatus(sessionName: string, payload: SessionStatusPayload) {
-  console.log('=== handleSessionStatus ===')
-  console.log('Session:', sessionName)
-  console.log('Payload:', JSON.stringify(payload, null, 2))
-  console.log('Raw WAHA status:', payload.status)
-
   const supabase = getSupabaseClient()
 
   // First, get the current connection to check status and display_name
@@ -414,8 +408,6 @@ async function handleSessionStatus(sessionName: string, payload: SessionStatusPa
     .select('display_name, first_connected_at, status')
     .eq('session_name', sessionName)
     .single()
-
-  console.log('Existing connection:', existingConnection)
 
   // Map WAHA status to our status
   // WAHA statuses: STARTING, SCAN_QR_CODE, WORKING, FAILED, STOPPED, AUTHENTICATED
@@ -441,18 +433,14 @@ async function handleSessionStatus(sessionName: string, payload: SessionStatusPa
       // If currently connected and we get STOPPED, it might be a temporary restart
       // (e.g., from updating metadata). Only mark as disconnected if we weren't connected.
       if (existingConnection?.status === 'connected') {
-        console.log('Ignoring STOPPED status because connection is currently connected (might be temporary restart)')
         return // Don't update - it's probably a metadata update causing temporary restart
       }
       status = 'disconnected'
       break
     default:
-      // For unknown statuses, log but don't update to disconnected
-      console.log('Unknown WAHA status received:', payload.status, '- ignoring to prevent false disconnection')
+      // For unknown statuses, don't update to disconnected to prevent false disconnections
       return // Exit early, don't update database
   }
-
-  console.log('Mapped status:', status)
 
   const updateData: Record<string, unknown> = {
     status,
@@ -473,15 +461,12 @@ async function handleSessionStatus(sessionName: string, payload: SessionStatusPa
     }
   }
 
-  console.log('Updating connection with data:', updateData)
-
-  const { data: updateResult, error: updateError } = await supabase
+  const { error: updateError } = await supabase
     .from('connections')
     .update(updateData)
     .eq('session_name', sessionName)
     .select()
 
-  console.log('Update result:', updateResult)
   if (updateError) {
     console.error('Update error:', updateError)
   }
@@ -683,8 +668,9 @@ async function handlePollVote(sessionName: string, payload: PollVotePayload) {
   }, { onConflict: 'message_id,voter' })
 }
 
-async function handlePollVoteFailed(sessionName: string, payload: PollVotePayload) {
-  console.log('Poll vote failed:', { session: sessionName, ...payload })
+async function handlePollVoteFailed(_sessionName: string, _payload: PollVotePayload) {
+  // Poll vote failed - currently no-op
+  // Implement error handling/retry if needed
 }
 
 // ============================================================================

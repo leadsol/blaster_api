@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useTheme } from '@/contexts/ThemeContext'
 import { ChevronLeft, Loader2, RefreshCw, X, AlertTriangle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { logger } from '@/lib/logger'
 
 // Get next session number from global counter (LEADSOL1, LEADSOL2, etc.)
 const getNextSessionName = async (): Promise<string> => {
@@ -120,7 +121,7 @@ function QRConnectionPageContent() {
   useEffect(() => {
     if (!connectionId) return
 
-    console.log('Setting up realtime subscription for connection:', connectionId)
+    logger.debug('Setting up realtime subscription for connection:', connectionId)
     const supabase = createClient()
 
     const channel = supabase
@@ -134,7 +135,7 @@ function QRConnectionPageContent() {
           filter: `id=eq.${connectionId}`
         },
         (payload) => {
-          console.log('Realtime update received:', payload)
+          logger.debug('Realtime update received:', payload)
           const updated = payload.new as { status: string }
           if (updated.status === 'connected') {
             setStep('success')
@@ -145,11 +146,11 @@ function QRConnectionPageContent() {
         }
       )
       .subscribe((status, err) => {
-        console.log('Realtime subscription status:', status, err)
+        logger.debug('Realtime subscription status:', status, err)
       })
 
     return () => {
-      console.log('Cleaning up realtime subscription')
+      logger.debug('Cleaning up realtime subscription')
       supabase.removeChannel(channel)
     }
   }, [connectionId])
@@ -189,34 +190,34 @@ function QRConnectionPageContent() {
       const statusResponse = await fetch(`/api/waha/sessions/${sessionName}/status`)
       if (statusResponse.ok) {
         const statusData = await statusResponse.json()
-        console.log('Session status on refresh:', statusData.status)
+        logger.debug('Session status on refresh:', statusData.status)
 
         if (statusData.status === 'FAILED' || statusData.status === 'STOPPED') {
-          console.log('Session is stopped/failed, restarting...')
+          logger.debug('Session is stopped/failed, restarting...')
           const restartResponse = await fetch(`/api/waha/sessions/${sessionName}/restart`, {
             method: 'POST',
           })
           if (restartResponse.ok) {
-            console.log('Session restarted successfully, waiting for it to be ready...')
+            logger.debug('Session restarted successfully, waiting for it to be ready...')
             // Wait longer for session to be ready after restart
             await new Promise(resolve => setTimeout(resolve, 5000))
           }
         }
       } else if (statusResponse.status === 404) {
         // Session doesn't exist in WAHA, need to recreate
-        console.log('Session not found in WAHA, recreating...')
+        logger.debug('Session not found in WAHA, recreating...')
         const createResponse = await fetch('/api/waha/sessions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: sessionName }),
         })
         if (createResponse.ok) {
-          console.log('Session recreated, waiting for it to be ready...')
+          logger.debug('Session recreated, waiting for it to be ready...')
           await new Promise(resolve => setTimeout(resolve, 5000))
         }
       }
     } catch (error) {
-      console.log('Error checking session status:', error)
+      logger.error('Error checking session status:', error)
     }
 
     // Use fetchQRCode which already has retry logic
@@ -252,10 +253,10 @@ function QRConnectionPageContent() {
       const statusResponse = await fetch(`/api/waha/sessions/${session}/status`)
       if (statusResponse.ok) {
         const statusData = await statusResponse.json()
-        console.log('WAHA session status:', statusData.status)
+        logger.debug('WAHA session status:', statusData.status)
 
         if (statusData.status === 'FAILED' || statusData.status === 'STOPPED') {
-          console.log('Session is stopped/failed, restarting...')
+          logger.debug('Session is stopped/failed, restarting...')
           // Restart the session
           const restartResponse = await fetch(`/api/waha/sessions/${session}/restart`, {
             method: 'POST',
@@ -263,7 +264,7 @@ function QRConnectionPageContent() {
           if (!restartResponse.ok) {
             console.error('Failed to restart session')
           } else {
-            console.log('Session restarted successfully')
+            logger.debug('Session restarted successfully')
             // Wait for session to be ready
             await new Promise(resolve => setTimeout(resolve, 3000))
           }
@@ -305,7 +306,7 @@ function QRConnectionPageContent() {
       })
 
       if (!wahaResponse.ok) {
-        console.log('Failed to create WAHA session')
+        logger.error('Failed to create WAHA session')
         setShowErrorModal(true)
         setErrorMessage('לא הצלחנו ליצור חיבור. נסה שוב.')
         return
@@ -330,8 +331,8 @@ function QRConnectionPageContent() {
         setShowErrorModal(true)
         setErrorMessage('לא הצלחנו לקבל קוד QR. נסה שוב.')
       }
-    } catch (error: any) {
-      console.log('Error creating connection:', error)
+    } catch (error) {
+      logger.error('Error creating connection:', error)
       setShowErrorModal(true)
       setErrorMessage('שגיאה ביצירת החיבור. נסה שוב.')
     }
@@ -342,13 +343,13 @@ function QRConnectionPageContent() {
     try {
       // Delete from WAHA first - always try if we have a session name
       if (sessionName) {
-        console.log(`Deleting WAHA session: ${sessionName}`)
+        logger.debug(`Deleting WAHA session: ${sessionName}`)
         try {
           const wahaResponse = await fetch(`/api/waha/sessions/${sessionName}`, {
             method: 'DELETE',
           })
           const wahaResult = await wahaResponse.json()
-          console.log(`WAHA delete response:`, wahaResponse.status, wahaResult)
+          logger.debug(`WAHA delete response:`, wahaResponse.status, wahaResult)
         } catch (wahaError) {
           console.error('WAHA delete error:', wahaError)
           // Continue even if WAHA delete fails
@@ -357,13 +358,13 @@ function QRConnectionPageContent() {
 
       // Delete from database if we have a connection ID
       if (connectionId) {
-        console.log(`Deleting connection from DB: ${connectionId}`)
+        logger.debug(`Deleting connection from DB: ${connectionId}`)
         const supabase = createClient()
         const { error } = await supabase.from('connections').delete().eq('id', connectionId)
         if (error) {
           console.error('DB delete error:', error)
         } else {
-          console.log('DB delete successful')
+          logger.debug('DB delete successful')
         }
       }
 
@@ -472,6 +473,7 @@ function QRConnectionPageContent() {
             <div className="flex justify-center mb-8">
               {qrCode ? (
                 <div className="bg-white p-4 rounded-xl shadow-lg">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={qrCode} alt="QR Code" className="w-64 h-64" />
                 </div>
               ) : (
@@ -483,7 +485,7 @@ function QRConnectionPageContent() {
 
             {/* Description */}
             <p className={`text-[16px] text-center mb-4 ${darkMode ? 'text-gray-400' : 'text-[#030733]'}`}>
-              פתח את WhatsApp בטלפון שלך ועבור ל-"מכשירים מקושרים" וסרוק את הקוד
+              פתח את WhatsApp בטלפון שלך ועבור ל-&quot;מכשירים מקושרים&quot; וסרוק את הקוד
             </p>
 
             {/* Warning message */}

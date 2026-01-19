@@ -61,11 +61,11 @@ export async function POST(request: NextRequest) {
     const rows = table.rows || []
 
     // Get headers from column labels
-    const headers = cols.map((col: any, idx: number) => col.label || `Column ${idx + 1}`)
+    const headers = cols.map((col: { label?: string }, idx: number) => col.label || `Column ${idx + 1}`)
 
     // Get data rows
-    const dataRows = rows.map((row: any) => {
-      return row.c.map((cell: any) => {
+    const dataRows = rows.map((row: { c: Array<{ v?: unknown } | null> }) => {
+      return row.c.map((cell) => {
         if (!cell) return ''
         return cell.v !== null && cell.v !== undefined ? String(cell.v) : ''
       })

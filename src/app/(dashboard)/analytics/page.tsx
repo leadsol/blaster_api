@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { logger } from '@/lib/logger'
 import {
   Users, Loader2, Search, ChevronDown, Clock,
   Trash2, Copy, Download, MessageCircle,
@@ -144,7 +145,7 @@ function AnalyticsContent() {
           table: 'campaigns'
         },
         (payload) => {
-          console.log('[Analytics] Campaign realtime update:', payload.eventType, payload.new)
+          logger.debug('[Analytics] Campaign realtime update:', payload.eventType, payload.new)
 
           if (payload.eventType === 'INSERT') {
             const newCampaign = payload.new as CampaignStats
@@ -169,7 +170,7 @@ function AnalyticsContent() {
         }
       )
       .subscribe((status) => {
-        console.log('[Analytics] Campaigns channel status:', status)
+        logger.debug('[Analytics] Campaigns channel status:', status)
       })
 
     return () => {
@@ -205,7 +206,7 @@ function AnalyticsContent() {
           filter: `campaign_id=eq.${campaignId}`
         },
         (payload) => {
-          console.log('Message realtime update:', payload)
+          logger.debug('Message realtime update:', payload)
 
           if (payload.eventType === 'INSERT') {
             const newRecipient = payload.new as Recipient
@@ -223,12 +224,13 @@ function AnalyticsContent() {
         }
       )
       .subscribe((status) => {
-        console.log(`[Analytics] Messages channel status for ${campaignId}:`, status)
+        logger.debug(`[Analytics] Messages channel status for ${campaignId}:`, status)
       })
 
     return () => {
       supabase.removeChannel(messagesChannel)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCampaign?.id])
 
   // Select campaign from URL parameter
@@ -245,6 +247,7 @@ function AnalyticsContent() {
     if (selectedCampaign) {
       loadRecipients(selectedCampaign.id)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCampaign])
 
   // Recalculate daily usage when device selection changes
@@ -266,6 +269,7 @@ function AnalyticsContent() {
         setSelectedDevices(new Set(connections.map(c => c.id)))
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connections, campaigns])
 
   // Countdown timer for running/paused campaigns
@@ -361,6 +365,7 @@ function AnalyticsContent() {
       const interval = setInterval(calculateCountdown, 1000)
       return () => clearInterval(interval)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCampaign?.id, selectedCampaign?.status, selectedCampaign?.started_at, selectedCampaign?.estimated_duration, selectedCampaign?.paused_at, recipients])
 
   const loadData = async () => {
@@ -1723,6 +1728,25 @@ function AnalyticsContent() {
                           )}
                         </div>
                       ))}
+
+                      {/* Daily Limit Reached Row */}
+                      {dailyLimit > 0 && dailyMessageCount >= dailyLimit && selectedCampaign?.status !== 'completed' && (
+                        <div className={`${darkMode ? 'bg-yellow-500/10 border-yellow-500/30' : 'bg-yellow-50 border-yellow-200'} border rounded-[8px] px-3 sm:px-4 py-2 sm:py-3 mt-2`}>
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse" />
+                            <p className={`text-[11px] sm:text-[12px] font-medium ${darkMode ? 'text-yellow-400' : 'text-yellow-700'}`}>
+                              הגעת ללימיט היומי ({dailyMessageCount}/{dailyLimit} הודעות)
+                            </p>
+                          </div>
+                          <p className={`text-[10px] sm:text-[11px] mt-1 mr-4 ${darkMode ? 'text-yellow-300/70' : 'text-yellow-600'}`}>
+                            {selectedCampaign?.respect_active_hours && selectedCampaign?.active_hours_start ? (
+                              <>ההודעה הבאה תישלח מחר בשעה {selectedCampaign.active_hours_start.slice(0, 5)}</>
+                            ) : (
+                              <>ההודעה הבאה תישלח לאחר 00:00</>
+                            )}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

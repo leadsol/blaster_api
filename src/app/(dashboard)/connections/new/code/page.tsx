@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useTheme } from '@/contexts/ThemeContext'
 import { ChevronLeft, Loader2, Copy, CheckCircle, X, AlertTriangle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { logger } from '@/lib/logger'
 
 // Convert Israeli phone number to international format
 const formatIsraeliPhone = (phone: string): string => {
@@ -150,7 +151,7 @@ function CodeConnectionPageContent() {
   useEffect(() => {
     if (!connectionId) return
 
-    console.log('Setting up realtime subscription for connection:', connectionId)
+    logger.debug('Setting up realtime subscription for connection:', connectionId)
     const supabase = createClient()
 
     const channel = supabase
@@ -164,7 +165,7 @@ function CodeConnectionPageContent() {
           filter: `id=eq.${connectionId}`
         },
         (payload) => {
-          console.log('Realtime update received:', payload)
+          logger.debug('Realtime update received:', payload)
           const updated = payload.new as { status: string }
           if (updated.status === 'connected') {
             setStep('success')
@@ -175,11 +176,11 @@ function CodeConnectionPageContent() {
         }
       )
       .subscribe((status, err) => {
-        console.log('Realtime subscription status:', status, err)
+        logger.debug('Realtime subscription status:', status, err)
       })
 
     return () => {
-      console.log('Cleaning up realtime subscription')
+      logger.debug('Cleaning up realtime subscription')
       supabase.removeChannel(channel)
     }
   }, [connectionId, step])
@@ -188,13 +189,13 @@ function CodeConnectionPageContent() {
     try {
       // Wait for session to be ready
       if (retries === 8) {
-        console.log('Waiting for session to be ready...')
+        logger.debug('Waiting for session to be ready...')
         await new Promise(resolve => setTimeout(resolve, 3000))
 
         const statusResponse = await fetch(`/api/waha/sessions/${session}/status`)
         if (statusResponse.ok) {
           const statusData = await statusResponse.json()
-          console.log('Session status:', statusData.status)
+          logger.debug('Session status:', statusData.status)
           if (statusData.status !== 'SCAN_QR_CODE' && statusData.status !== 'WORKING') {
             await new Promise(resolve => setTimeout(resolve, 2000))
           }
@@ -202,7 +203,7 @@ function CodeConnectionPageContent() {
       }
 
       const cleanPhone = formatIsraeliPhone(phoneNumber)
-      console.log(`Requesting code for phone: ${cleanPhone}`)
+      logger.debug(`Requesting code for phone: ${cleanPhone}`)
 
       const response = await fetch(`/api/waha/sessions/${session}/auth/request-code`, {
         method: 'POST',
@@ -211,7 +212,7 @@ function CodeConnectionPageContent() {
       })
 
       const data = await response.json()
-      console.log('Request code response:', data)
+      logger.debug('Request code response:', data)
 
       if (response.ok && data.code) {
         setLinkCode(data.code)
@@ -219,16 +220,16 @@ function CodeConnectionPageContent() {
       }
 
       if (retries > 0) {
-        console.log(`Code not ready, retrying in 3 seconds... (${retries} retries left)`)
+        logger.debug(`Code not ready, retrying in 3 seconds... (${retries} retries left)`)
         await new Promise(resolve => setTimeout(resolve, 3000))
         return fetchLinkCode(session, retries - 1)
       }
 
-      console.log('Failed to get link code after retries:', data)
+      logger.debug('Failed to get link code after retries:', data)
       setErrorMessage('לא הצלחנו לקבל קוד מ-WhatsApp. נסה שוב.')
       return false
     } catch (error) {
-      console.log('Error fetching link code:', error)
+      logger.error('Error fetching link code:', error)
       if (retries > 0) {
         await new Promise(resolve => setTimeout(resolve, 3000))
         return fetchLinkCode(session, retries - 1)
@@ -267,7 +268,7 @@ function CodeConnectionPageContent() {
         })
 
         if (!wahaResponse.ok) {
-          console.log('Failed to create WAHA session')
+          logger.error('Failed to create WAHA session')
           setErrorMessage('לא הצלחנו ליצור חיבור. נסה שוב.')
           setStep('phone')
           setShowErrorModal(true)
@@ -296,8 +297,8 @@ function CodeConnectionPageContent() {
         setStep('phone')
         setShowErrorModal(true)
       }
-    } catch (error: any) {
-      console.log('Error creating connection:', error)
+    } catch (error) {
+      logger.error('Error creating connection:', error)
       setStep('phone')
       setErrorMessage('שגיאה ביצירת החיבור. נסה שוב.')
       setShowErrorModal(true)
@@ -311,13 +312,13 @@ function CodeConnectionPageContent() {
     try {
       // Delete from WAHA first - always try if we have a session name
       if (sessionName) {
-        console.log(`Deleting WAHA session: ${sessionName}`)
+        logger.debug(`Deleting WAHA session: ${sessionName}`)
         try {
           const wahaResponse = await fetch(`/api/waha/sessions/${sessionName}`, {
             method: 'DELETE',
           })
           const wahaResult = await wahaResponse.json()
-          console.log(`WAHA delete response:`, wahaResponse.status, wahaResult)
+          logger.debug(`WAHA delete response:`, wahaResponse.status, wahaResult)
         } catch (wahaError) {
           console.error('WAHA delete error:', wahaError)
           // Continue even if WAHA delete fails
@@ -326,13 +327,13 @@ function CodeConnectionPageContent() {
 
       // Delete from database if we have a connection ID
       if (connectionId) {
-        console.log(`Deleting connection from DB: ${connectionId}`)
+        logger.debug(`Deleting connection from DB: ${connectionId}`)
         const supabase = createClient()
         const { error } = await supabase.from('connections').delete().eq('id', connectionId)
         if (error) {
           console.error('DB delete error:', error)
         } else {
-          console.log('DB delete successful')
+          logger.debug('DB delete successful')
         }
       }
 

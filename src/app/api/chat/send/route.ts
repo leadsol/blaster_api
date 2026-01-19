@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { simpleRateLimit } from '@/lib/api-utils'
 import { waha } from '@/lib/waha'
+import { logger } from '@/lib/logger'
+
+// WAHA message response interface
+interface WAHAMessageResponse {
+  id?: string
+  key?: { id?: string }
+}
 
 export async function POST(request: NextRequest) {
   // Rate limit check
@@ -96,7 +103,7 @@ export async function POST(request: NextRequest) {
         user_id: user.id,
         connection_id: connectionId,
         chat_id: chatId,
-        waha_message_id: wahaData.id || (wahaData as any).key?.id || `local_${Date.now()}`,
+        waha_message_id: wahaData.id || (wahaData as WAHAMessageResponse).key?.id || `local_${Date.now()}`,
         content,
         media_url: mediaUrl || null,
         media_type: mediaType || null,
@@ -108,7 +115,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (saveError) {
-      console.error('Error saving message:', saveError)
+      logger.error('Error saving message:', saveError)
       // Still return success since message was sent
       return NextResponse.json({
         success: true,

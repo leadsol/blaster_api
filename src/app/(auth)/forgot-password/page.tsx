@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
 import { Loader2, CheckCircle } from 'lucide-react'
 
@@ -43,10 +44,13 @@ export default function ForgotPasswordPage() {
         <div className="w-full max-w-[942px] h-[calc(100vh-38px)] bg-[#F2F3F8] rounded-[25px] p-6 lg:px-[45px] lg:pt-[15px] lg:pb-[25px] relative overflow-hidden">
           {/* Header - Logo on right side (RTL), Back link on left side */}
           <div className="flex items-center justify-between">
-            <img
+            <Image
               src="https://res.cloudinary.com/dimsgvsze/image/upload/v1768252856/BY_3_exro8m.png"
               alt="LeadSol Logo"
+              width={150}
+              height={100}
               className="h-[100px] w-auto"
+              unoptimized
             />
             <p className="text-[#030733] text-[14px]">
               אין לך חשבון עדיין? <Link href="/register" className="text-[#0043E0] underline">להרשמה</Link>
@@ -160,14 +164,14 @@ export default function ForgotPasswordPage() {
         <div className="relative z-10 max-w-[750px] text-right mt-[80px] px-[30px]">
           {/* Quote */}
           <p className="text-white text-[28px] lg:text-[32px] font-semibold leading-[1.5] mb-8">
-            "עם Leadsol סגרנו 38% יותר לידים רק בזכות אוטומציה של המענה הראשוני. זה מרגיש כמו צוות מכירות שלא הולך לישון אף פעם"
+            &ldquo;עם Leadsol סגרנו 38% יותר לידים רק בזכות אוטומציה של המענה הראשוני. זה מרגיש כמו צוות מכירות שלא הולך לישון אף פעם&rdquo;
           </p>
 
           {/* Author section */}
           <div className="flex items-center justify-start gap-4">
             {/* Quote icon */}
             <div className="w-[42px] h-[42px] bg-white rounded-[6px] flex items-center justify-center overflow-hidden">
-              <span className="text-[#0043E0] text-[50px] font-serif leading-none mt-[6px]">"</span>
+              <span className="text-[#0043E0] text-[50px] font-serif leading-none mt-[6px]">&ldquo;</span>
             </div>
 
             {/* Author info */}
@@ -180,10 +184,13 @@ export default function ForgotPasswordPage() {
 
         {/* Preview Image */}
         <div className="absolute bottom-0 left-0 right-0 h-[350px] overflow-hidden">
-          <img
+          <Image
             src="https://res.cloudinary.com/dimsgvsze/image/upload/v1768252812/yqwztgbtptuirkmo6gre_yx7urn.png"
             alt="LeadSol Preview"
+            width={800}
+            height={350}
             className="w-full h-auto object-cover object-top"
+            unoptimized
           />
         </div>
       </div>

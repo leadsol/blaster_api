@@ -1,19 +1,17 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { createClient } from '@/lib/supabase/client'
 import {
   Users,
   DollarSign,
-  Link2,
   Copy,
   Check,
   TrendingUp,
   ChevronDown,
-  ExternalLink,
   Wallet,
   CreditCard,
   BarChart3,
-  Gift,
   HelpCircle
 } from 'lucide-react'
 
@@ -25,33 +23,24 @@ interface WithdrawalHistory {
   method: string
 }
 
-const withdrawalHistory: WithdrawalHistory[] = [
-  { id: '1', date: '14/07/2025', amount: 1405, status: 'completed', method: 'העברה בנקאית' },
-  { id: '2', date: '24/05/2025', amount: 1400, status: 'completed', method: 'PayPal' },
-  { id: '3', date: '21/05/2025', amount: 500, status: 'completed', method: 'PayPal' },
-  { id: '4', date: '15/05/2025', amount: 970, status: 'completed', method: 'העברה בנקאית' },
-  { id: '5', date: '08/02/2025', amount: 1905, status: 'completed', method: 'PayPal' },
-  { id: '6', date: '04/02/2025', amount: 1170, status: 'completed', method: 'PayPal' },
-]
+interface AffiliateStats {
+  totalEarnings: number
+  pendingEarnings: number
+  availableToWithdraw: number
+  referralCount: number
+  conversionCount: number
+  conversionRate: number
+}
 
-const monthlyData = [
-  { month: 'ינואר', amount: 450 },
-  { month: 'פברואר', amount: 780 },
-  { month: 'מרץ', amount: 920 },
-  { month: 'אפריל', amount: 650 },
-  { month: 'מאי', amount: 1100 },
-  { month: 'יוני', amount: 890 },
-  { month: 'יולי', amount: 1200 },
-  { month: 'אוגוסט', amount: 1400 },
-  { month: 'ספטמבר', amount: 980 },
-  { month: 'אוקטובר', amount: 1300 },
-  { month: 'נובמבר', amount: 750 },
-  { month: 'דצמבר', amount: 1100 },
-]
+interface MonthlyData {
+  month: string
+  amount: number
+}
 
+// FAQ items - static content is acceptable
 const faqItems = [
   {
-    question: 'איך דואג לעמוד את העמלות?',
+    question: 'איך מחושבות העמלות?',
     answer: 'העמלות מחושבות באופן אוטומטי בכל פעם שמישהו נרשם דרך הלינק שלך ומשלם על חבילה. תקבל 20% מכל תשלום ראשון.',
   },
   {
@@ -63,7 +52,7 @@ const faqItems = [
     answer: 'לא! אין הגבלה. ככל שתפנה יותר אנשים, כך תרוויח יותר.',
   },
   {
-    question: 'מה קורה אם העמלה לא עברה התאשרות?',
+    question: 'מה קורה אם המשיכה לא אושרה?',
     answer: 'אם יש בעיה עם משיכה, צוות התמיכה שלנו יצור איתך קשר להסדרת העניין.',
   },
 ]
@@ -72,12 +61,50 @@ export default function AffiliatePage() {
   const [copied, setCopied] = useState(false)
   const [showWithdrawModal, setShowWithdrawModal] = useState(false)
   const [selectedFaq, setSelectedFaq] = useState<number | null>(null)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Reserved for withdrawal history feature
+  const [withdrawalHistory, setWithdrawalHistory] = useState<WithdrawalHistory[]>([])
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Reserved for monthly data chart feature
+  const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([])
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Reserved for affiliate stats feature
+  const [stats, setStats] = useState<AffiliateStats>({
+    totalEarnings: 0,
+    pendingEarnings: 0,
+    availableToWithdraw: 0,
+    referralCount: 0,
+    conversionCount: 0,
+    conversionRate: 0
+  })
+  const [affiliateLink, setAffiliateLink] = useState('')
+  const [couponCode, setCouponCode] = useState('')
 
-  const affiliateLink = 'https://leadsol.co/ref/moran90&utm=affiliate.co.il'
-  const couponCode = 'MoranWelcome'
-  const totalEarnings = 2400
-  const pendingEarnings = 450
-  const availableToWithdraw = 1950
+  const loadAffiliateData = async () => {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    // Load affiliate profile/settings
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('affiliate_code, affiliate_coupon')
+      .eq('id', user.id)
+      .single()
+
+    if (profile) {
+      // Generate affiliate link from user's affiliate code
+      const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
+      setAffiliateLink(profile.affiliate_code ? `${baseUrl}/ref/${profile.affiliate_code}` : '')
+      setCouponCode(profile.affiliate_coupon || '')
+    }
+
+    // Note: Affiliate stats, withdrawal history, and monthly data would come from
+    // affiliate-related tables when the affiliate system is fully implemented.
+    // For now, show zeros/empty states until the feature is built out.
+  }
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Initial data fetch on mount
+    loadAffiliateData()
+  }, [])
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text)
@@ -85,7 +112,7 @@ export default function AffiliatePage() {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  const maxAmount = Math.max(...monthlyData.map(d => d.amount))
+  const maxAmount = monthlyData.length > 0 ? Math.max(...monthlyData.map(d => d.amount)) : 1
 
   return (
     <div className="p-3 sm:p-4 lg:p-6 h-full overflow-y-auto" dir="rtl">
@@ -107,9 +134,9 @@ export default function AffiliatePage() {
                 <div className="w-8 h-8 sm:w-10 sm:h-10 bg-green-100 rounded-lg flex items-center justify-center">
                   <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
                 </div>
-                <span className="text-[10px] sm:text-xs text-gray-500">סה"כ</span>
+                <span className="text-[10px] sm:text-xs text-gray-500">סה&quot;כ</span>
               </div>
-              <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">${totalEarnings.toLocaleString()}</p>
+              <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">${stats.totalEarnings.toLocaleString()}</p>
               <p className="text-xs sm:text-sm text-gray-500 mt-1">עמלות שהורווחו</p>
             </div>
 
@@ -120,7 +147,7 @@ export default function AffiliatePage() {
                 </div>
                 <span className="text-[10px] sm:text-xs text-gray-500">ממתין</span>
               </div>
-              <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">${pendingEarnings}</p>
+              <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">${stats.pendingEarnings}</p>
               <p className="text-xs sm:text-sm text-gray-500 mt-1">בהמתנה לאישור</p>
             </div>
 
@@ -131,7 +158,7 @@ export default function AffiliatePage() {
                 </div>
                 <span className="text-[10px] sm:text-xs text-gray-500">זמין</span>
               </div>
-              <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">${availableToWithdraw.toLocaleString()}</p>
+              <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">${stats.availableToWithdraw.toLocaleString()}</p>
               <p className="text-xs sm:text-sm text-gray-500 mt-1">למשיכה</p>
             </div>
           </div>
@@ -147,7 +174,7 @@ export default function AffiliatePage() {
             </div>
 
             <div className="flex items-end gap-1 sm:gap-2 h-32 sm:h-40 lg:h-48 overflow-x-auto">
-              {monthlyData.map((data, index) => (
+              {monthlyData.length > 0 ? monthlyData.map((data, index) => (
                 <div key={index} className="flex-1 min-w-[20px] sm:min-w-[30px] flex flex-col items-center">
                   <div
                     className="w-full bg-[#1e3a5f] rounded-t-sm transition-all hover:bg-[#2a4a73]"
@@ -157,7 +184,11 @@ export default function AffiliatePage() {
                     {data.month}
                   </span>
                 </div>
-              ))}
+              )) : (
+                <div className="w-full h-full flex items-center justify-center text-gray-400 text-sm">
+                  אין נתונים להצגה
+                </div>
+              )}
             </div>
           </div>
 
@@ -184,7 +215,7 @@ export default function AffiliatePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {withdrawalHistory.map((item) => (
+                  {withdrawalHistory.length > 0 ? withdrawalHistory.map((item) => (
                     <tr key={item.id} className="border-t border-gray-100 hover:bg-gray-50">
                       <td className="p-3 sm:p-4 text-gray-900 text-xs sm:text-sm">{item.date}</td>
                       <td className="p-3 sm:p-4 text-gray-900 text-xs sm:text-sm">${item.amount}</td>
@@ -201,13 +232,19 @@ export default function AffiliatePage() {
                       </td>
                       <td className="p-3 sm:p-4 text-gray-600 text-xs sm:text-sm">{item.method}</td>
                     </tr>
-                  ))}
+                  )) : (
+                    <tr>
+                      <td colSpan={4} className="p-8 text-center text-gray-500 text-sm">
+                        אין היסטוריית משיכות
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
             {/* Mobile Cards */}
             <div className="sm:hidden divide-y divide-gray-100">
-              {withdrawalHistory.map((item) => (
+              {withdrawalHistory.length > 0 ? withdrawalHistory.map((item) => (
                 <div key={item.id} className="p-3 hover:bg-gray-50">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-gray-900 text-sm font-medium">${item.amount}</span>
@@ -226,7 +263,11 @@ export default function AffiliatePage() {
                     <span>{item.method}</span>
                   </div>
                 </div>
-              ))}
+              )) : (
+                <div className="p-8 text-center text-gray-500 text-sm">
+                  אין היסטוריית משיכות
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -250,7 +291,7 @@ export default function AffiliatePage() {
                     fill="none"
                     stroke="#25D366"
                     strokeWidth="8"
-                    strokeDasharray={`${(availableToWithdraw / totalEarnings) * 251} 251`}
+                    strokeDasharray={`${stats.totalEarnings > 0 ? (stats.availableToWithdraw / stats.totalEarnings) * 251 : 0} 251`}
                   />
                 </svg>
                 <div className="absolute inset-0 flex items-center justify-center">
@@ -276,21 +317,21 @@ export default function AffiliatePage() {
                   <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   משתמשים שהופנו
                 </span>
-                <span className="font-semibold text-gray-900 text-sm sm:text-base">47</span>
+                <span className="font-semibold text-gray-900 text-sm sm:text-base">{stats.referralCount}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-gray-600 flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm">
                   <CreditCard className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   המרות ששילמו
                 </span>
-                <span className="font-semibold text-gray-900 text-sm sm:text-base">34</span>
+                <span className="font-semibold text-gray-900 text-sm sm:text-base">{stats.conversionCount}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-gray-600 flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm">
                   <BarChart3 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   % המרה
                 </span>
-                <span className="font-semibold text-green-600 text-sm sm:text-base">72%</span>
+                <span className="font-semibold text-green-600 text-sm sm:text-base">{stats.conversionRate}%</span>
               </div>
             </div>
           </div>

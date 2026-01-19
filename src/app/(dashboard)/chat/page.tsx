@@ -2,21 +2,17 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { logger } from '@/lib/logger'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useConnection } from '@/contexts/ConnectionContext'
 import { formatPhoneForDisplay } from '@/lib/phone-utils'
 import {
   Search,
-  Send,
-  Paperclip,
-  Smile,
   Phone,
   Video,
   Check,
   CheckCheck,
-  Mic,
   X,
-  Calendar,
   MessageSquare,
   Loader2,
   Pin,
@@ -79,6 +75,44 @@ interface CampaignMessage {
   sent_at?: string
   failed_at?: string
   created_at?: string
+}
+
+// Type for Supabase realtime campaign payload
+interface CampaignRealtimePayload {
+  id: string
+  connection_id?: string
+  device_ids?: string[]
+  sent_count?: number
+  failed_count?: number
+  status?: string
+}
+
+// Type for WAHA chat response
+interface WahaChat {
+  chat_id: string
+  name?: string
+  last_message?: string
+  last_message_time?: string
+  unread_count?: number
+  pinned?: boolean
+  picture?: string
+}
+
+// Type for conversation from database
+interface ConversationData {
+  chat_id: string
+  last_message?: string
+  last_message_time?: string
+  unread_count?: number
+}
+
+// Type for message from API response
+interface ApiMessage {
+  id: string
+  content?: string
+  from_me: boolean
+  timestamp: string
+  ack?: number
 }
 
 const labels: Label[] = [
@@ -187,11 +221,12 @@ export default function ChatPage() {
   // Load conversations when selected connection changes
   useEffect(() => {
     if (selectedConnection) {
-      loadConversations()
+            loadConversations()
     } else {
       setContacts([])
       setLoading(false)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadConversations is defined later
   }, [selectedConnection])
 
   useEffect(() => {
@@ -201,7 +236,7 @@ export default function ChatPage() {
   // Load live campaign for selected connection
   useEffect(() => {
     if (selectedConnection) {
-      loadLiveCampaign()
+            loadLiveCampaign()
       // Set up real-time subscription for campaign status changes
       // Note: We can't filter by device_ids array in realtime, so we listen to all campaigns
       // and then filter in loadLiveCampaign
@@ -214,12 +249,12 @@ export default function ChatPage() {
           table: 'campaigns'
         }, (payload) => {
           // Check if this campaign involves our connection
-          const campaign = payload.new as any
+          const campaign = payload.new as CampaignRealtimePayload
           const connectionId = selectedConnection.id
           const isRelevant = campaign.connection_id === connectionId ||
             (campaign.device_ids && campaign.device_ids.includes(connectionId))
           if (isRelevant) {
-            loadLiveCampaign()
+                        loadLiveCampaign()
           }
         })
         .subscribe()
@@ -231,6 +266,7 @@ export default function ChatPage() {
       setLiveCampaign(null)
       setCampaignMessages([])
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadLiveCampaign is defined later
   }, [selectedConnection])
 
   // Separate subscription for campaign messages AND campaign stats - depends on liveCampaign
@@ -248,8 +284,8 @@ export default function ChatPage() {
         table: 'campaign_messages',
         filter: `campaign_id=eq.${liveCampaign.id}`
       }, () => {
-        console.log('[DEBUG] Campaign messages subscription triggered for campaign:', liveCampaign.id)
-        loadCampaignMessages(liveCampaign.id)
+        logger.debug('[DEBUG] Campaign messages subscription triggered for campaign:', liveCampaign.id)
+                loadCampaignMessages(liveCampaign.id)
       })
       .subscribe()
 
@@ -262,13 +298,14 @@ export default function ChatPage() {
         table: 'campaigns',
         filter: `id=eq.${liveCampaign.id}`
       }, (payload) => {
-        console.log('[DEBUG] Campaign stats subscription triggered:', payload.new)
+        logger.debug('[DEBUG] Campaign stats subscription triggered:', payload.new)
         // Update liveCampaign state with new stats
+        const updated = payload.new as CampaignRealtimePayload
         setLiveCampaign(prev => prev ? {
           ...prev,
-          sent_count: (payload.new as any).sent_count ?? prev.sent_count,
-          failed_count: (payload.new as any).failed_count ?? prev.failed_count,
-          status: (payload.new as any).status ?? prev.status
+          sent_count: updated.sent_count ?? prev.sent_count,
+          failed_count: updated.failed_count ?? prev.failed_count,
+          status: updated.status ?? prev.status
         } : null)
       })
       .subscribe()
@@ -277,6 +314,7 @@ export default function ChatPage() {
       supabase.removeChannel(messagesChannel)
       supabase.removeChannel(campaignChannel)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadCampaignMessages is defined later
   }, [liveCampaign?.id])
 
   // Countdown timer for live campaign
@@ -347,7 +385,7 @@ export default function ChatPage() {
       }
 
       if (messages) {
-        console.log('[DEBUG] Campaign messages from DB:', messages.slice(0, 5))
+        logger.debug('[DEBUG] Campaign messages from DB:', messages.slice(0, 5))
         // Map 'name' to 'contact_name' for UI consistency
         setCampaignMessages(messages.map(m => ({
           id: m.id,
@@ -385,7 +423,7 @@ export default function ChatPage() {
 
       if (wahaResponse.ok) {
         const wahaData = await wahaResponse.json()
-        console.log('[CHAT] WAHA chats response:', wahaData)
+        logger.debug('[CHAT] WAHA chats response:', wahaData)
 
         // Check if connection is not active (API returns error)
         if (wahaData.error === 'Connection is not active') {
@@ -402,7 +440,7 @@ export default function ChatPage() {
 
         if (wahaData.chats && wahaData.chats.length > 0) {
           setConnectionNotActive(false)
-          const formattedContacts: ChatContact[] = wahaData.chats.map((chat: any) => {
+          const formattedContacts: ChatContact[] = wahaData.chats.map((chat: WahaChat) => {
             const phone = chat.chat_id.replace('@c.us', '').replace('@g.us', '')
             const isGroup = chat.chat_id.endsWith('@g.us')
             const messageDate = chat.last_message_time ? new Date(chat.last_message_time) : null
@@ -450,7 +488,7 @@ export default function ChatPage() {
       if (response.ok) {
         const data = await response.json()
 
-        const formattedContacts: ChatContact[] = (data.conversations || []).map((conv: any) => {
+        const formattedContacts: ChatContact[] = (data.conversations || []).map((conv: ConversationData) => {
           const phone = conv.chat_id.replace('@c.us', '').replace('@g.us', '')
           const isGroup = conv.chat_id.endsWith('@g.us')
           const messageDate = conv.last_message_time ? new Date(conv.last_message_time) : null
@@ -507,12 +545,12 @@ export default function ChatPage() {
         const wahaData = await wahaResponse.json()
 
         if (wahaData.messages && wahaData.messages.length > 0) {
-          const formattedMessages: Message[] = wahaData.messages.map((m: any) => ({
+          const formattedMessages: Message[] = wahaData.messages.map((m: ApiMessage) => ({
             id: m.id,
             content: m.content || '',
             fromMe: m.from_me,
             timestamp: m.timestamp,
-            status: m.ack >= 3 ? 'read' : m.ack >= 2 ? 'delivered' : 'sent',
+            status: (m.ack ?? 0) >= 3 ? 'read' : (m.ack ?? 0) >= 2 ? 'delivered' : 'sent',
           }))
           setMessages(formattedMessages)
           return
@@ -525,12 +563,12 @@ export default function ChatPage() {
       )
       if (response.ok) {
         const data = await response.json()
-        const formattedMessages: Message[] = (data.messages || []).map((m: any) => ({
+        const formattedMessages: Message[] = (data.messages || []).map((m: ApiMessage) => ({
           id: m.id,
           content: m.content || '',
           fromMe: m.from_me,
           timestamp: m.timestamp,
-          status: m.ack >= 3 ? 'read' : m.ack >= 2 ? 'delivered' : 'sent',
+          status: (m.ack ?? 0) >= 3 ? 'read' : (m.ack ?? 0) >= 2 ? 'delivered' : 'sent',
         }))
         setMessages(formattedMessages)
       } else {
@@ -642,7 +680,7 @@ export default function ChatPage() {
             אין חיבור WhatsApp פעיל
           </h2>
           <p className={`text-[14px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
-            בחר חיבור מהתפריט הצדדי כדי לראות את הצ'אטים
+            בחר חיבור מהתפריט הצדדי כדי לראות את הצ&apos;אטים
           </p>
         </div>
       </div>
@@ -762,6 +800,7 @@ export default function ChatPage() {
                   {/* Avatar */}
                   <div className="w-[50px] h-[50px] rounded-full bg-gradient-to-br from-purple-400 to-blue-500 flex items-center justify-center flex-shrink-0 overflow-hidden">
                     {contact.avatar ? (
+                      // eslint-disable-next-line @next/next/no-img-element -- Dynamic user avatar from WhatsApp
                       <img src={contact.avatar} alt={contact.name} className="w-full h-full object-cover" />
                     ) : (
                       <span className="text-white text-[18px] font-medium">
@@ -820,6 +859,7 @@ export default function ChatPage() {
               >
                 <X className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
+              {/* eslint-disable-next-line @next/next/no-img-element -- Dynamic user avatar */}
               <img
                 src={selectedContact.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(selectedContact.name)}&background=random`}
                 alt={selectedContact.name}

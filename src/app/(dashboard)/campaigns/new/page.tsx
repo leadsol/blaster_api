@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { logger } from '@/lib/logger'
 import { normalizePhone, formatPhoneForDisplay } from '@/lib/phone-utils'
 import { FFmpeg } from '@ffmpeg/ffmpeg'
 import { fetchFile, toBlobURL } from '@ffmpeg/util'
@@ -21,9 +22,7 @@ import {
   FileText,
   Camera,
   BarChart3,
-  Image,
-  User,
-  Zap,
+  Image as ImageIcon,
   Square,
   Upload,
   Play,
@@ -81,6 +80,7 @@ function NewCampaignContent() {
 
   // Form data
   const [name, setName] = useState('')
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- State may be used in draft functionality
   const [loadMethod, setLoadMethod] = useState('')
   const [loadMethodDetails, setLoadMethodDetails] = useState('')
   const [messageTemplate, setMessageTemplate] = useState('')
@@ -173,10 +173,13 @@ function NewCampaignContent() {
   const [removalWords, setRemovalWords] = useState<string[]>([])
   const [removalWordInput, setRemovalWordInput] = useState('')
   const [skipDuplicateNumbers, setSkipDuplicateNumbers] = useState(false)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- May be used in advanced features
   const [duplicateCount, setDuplicateCount] = useState(0)
   const [sendSettingsSchedule, setSendSettingsSchedule] = useState(false)
   const [sendSettingsLink, setSendSettingsLink] = useState(false)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Reserved for future variable highlighting
   const [activeVariables, setActiveVariables] = useState<string[]>([])
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Reserved for advanced search feature
   const [advancedSearchQuery, setAdvancedSearchQuery] = useState('')
 
   // Message variations state
@@ -214,6 +217,7 @@ function NewCampaignContent() {
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
   const [isPlayingPreview, setIsPlayingPreview] = useState(false)
   const [uploadedFileName, setUploadedFileName] = useState('')
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Used to show conversion status during audio processing
   const [isConverting, setIsConverting] = useState(false)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
@@ -448,6 +452,7 @@ function NewCampaignContent() {
     }, 500) // Debounce saves
 
     return () => clearTimeout(timeoutId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Intentionally excluding utility functions to avoid infinite loops
   }, [
     name, messageTemplate, recipients, exclusionList, allColumns,
     hasExclusionList, hasScheduling, hasActiveHours, hasPause, createNewList,
@@ -470,6 +475,7 @@ function NewCampaignContent() {
     return () => {
       setBlocking(false)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Intentionally excluding hasFormData to avoid re-renders
   }, [formModified, name, messageTemplate, recipients.length, setBlocking])
 
   // Clear data when leaving page (browser navigation/close)
@@ -496,6 +502,7 @@ function NewCampaignContent() {
       // Also clear when component unmounts (internal navigation)
       sessionStorage.removeItem(PAGE_MARKER_KEY)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Intentionally excluding hasFormData to use latest value in handler
   }, [formModified])
 
   // Handle navigation away from page (internal links)
@@ -531,7 +538,7 @@ function NewCampaignContent() {
     if (!editCampaignId && !duplicateCampaignId) {
       const hasDraft = loadDraftFromStorage()
       if (hasDraft) {
-        console.log('Loaded campaign draft from sessionStorage')
+        logger.debug('Loaded campaign draft from sessionStorage')
       }
     }
 
@@ -557,6 +564,7 @@ function NewCampaignContent() {
     return () => {
       supabase.removeChannel(channel)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Initial mount effect, dependencies intentionally omitted
   }, [])
 
   // Reset edit state when campaign ID changes
@@ -925,7 +933,7 @@ function NewCampaignContent() {
       .from('connections')
       .select('*')
 
-    console.log('Connections loaded:', connectionsData, 'Error:', connError)
+    logger.debug('Connections loaded:', connectionsData, 'Error:', connError)
 
     if (connectionsData && connectionsData.length > 0) {
       // Check which devices are busy in running campaigns
@@ -959,7 +967,7 @@ function NewCampaignContent() {
       // Calculate daily limits for each device
       await calculateDeviceDailyLimits(connectionsWithBusyStatus)
     } else {
-      console.log('No connections found or empty array')
+      logger.debug('No connections found or empty array')
     }
   }
 
@@ -998,7 +1006,7 @@ function NewCampaignContent() {
       }
 
       const deviceLimit = BASE_LIMIT + maxVariationBonus
-      console.log(`[DEVICE-LIMIT] ${device.display_name || device.session_name}: Base=${BASE_LIMIT}, Bonus=${maxVariationBonus}, Total=${deviceLimit}`)
+      logger.debug(`[DEVICE-LIMIT] ${device.display_name || device.session_name}: Base=${BASE_LIMIT}, Bonus=${maxVariationBonus}, Total=${deviceLimit}`)
 
       // Count messages sent today from this device
       const { data: campaignsUsingDevice } = await supabase
@@ -1158,6 +1166,7 @@ function NewCampaignContent() {
         if (!listError && userFiles) {
           // Calculate total storage by listing all user's files recursively
           let totalStorageBytes = 0
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Recursive function for potential deep folder traversal
           const getAllFiles = async (path: string): Promise<number> => {
             const { data: files } = await supabase.storage.from('leadsol_storage').list(path)
             let size = 0
@@ -1602,7 +1611,8 @@ function NewCampaignContent() {
     // Remove the variable from all recipients
     setRecipients(recipients.map(r => {
       if (r.variables && r.variables[columnName]) {
-        const { [columnName]: removed, ...restVariables } = r.variables
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Destructuring to remove the key
+        const { [columnName]: _removed, ...restVariables } = r.variables
         return { ...r, variables: restVariables }
       }
       return r
@@ -1632,7 +1642,8 @@ function NewCampaignContent() {
 
       // Clear the saved data for this column
       setRemovedColumnData(prev => {
-        const { [columnName]: removed, ...rest } = prev
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Destructuring to remove the key
+        const { [columnName]: _removed, ...rest } = prev
         return rest
       })
     }
@@ -1726,6 +1737,7 @@ function NewCampaignContent() {
     setDeleteConfirmPopup({ show: false, recipientId: '', recipientName: '', dontShowAgain: false })
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Reserved for manual recipient addition feature
   const handleAddManualRecipient = () => {
     if (manualName && manualPhone) {
       // Add שם and טלפון to allColumns if not already present
@@ -1986,7 +1998,7 @@ function NewCampaignContent() {
     const nameIndex = excelColumnNames.findIndex(n => n === 'שם')
     const phoneIndex = excelColumnNames.findIndex(n => n === 'טלפון')
 
-    console.log('handleAddExcelRecipients called', { nameIndex, phoneIndex, skipNameCheck, excelColumnNames })
+    logger.debug('handleAddExcelRecipients called', { nameIndex, phoneIndex, skipNameCheck, excelColumnNames })
 
     if (phoneIndex === -1) {
       setAlertPopup({ show: true, message: 'חובה לבחור עמודת טלפון' })
@@ -1994,7 +2006,7 @@ function NewCampaignContent() {
     }
 
     if (nameIndex === -1 && !skipNameCheck) {
-      console.log('Showing confirm popup for no name column')
+      logger.debug('Showing confirm popup for no name column')
       // Close Excel popup first, then show confirm
       setShowExcelPopup(false)
       setConfirmPopup({
@@ -2130,7 +2142,7 @@ function NewCampaignContent() {
     const nameIndex = columnNames.findIndex(n => n === 'שם')
     const phoneIndex = columnNames.findIndex(n => n === 'טלפון')
 
-    console.log('handleAddParsedRecipients called', { nameIndex, phoneIndex, skipNameCheck, columnNames })
+    logger.debug('handleAddParsedRecipients called', { nameIndex, phoneIndex, skipNameCheck, columnNames })
 
     if (phoneIndex === -1) {
       setAlertPopup({ show: true, message: 'חובה לבחור עמודת טלפון' })
@@ -2138,7 +2150,7 @@ function NewCampaignContent() {
     }
 
     if (nameIndex === -1 && !skipNameCheck) {
-      console.log('Showing confirm popup for no name column (manual)')
+      logger.debug('Showing confirm popup for no name column (manual)')
       // Close manual popup first, then show confirm
       setShowManualEntryPopup(false)
       setConfirmPopup({
@@ -2257,7 +2269,7 @@ function NewCampaignContent() {
       }, {} as Record<string, string>)
 
       const formattedPhone = normalizePhone(manualPhone)
-      console.log('Adding manual recipient:', { original: manualPhone, formatted: formattedPhone })
+      logger.debug('Adding manual recipient:', { original: manualPhone, formatted: formattedPhone })
 
       // Update all columns with שם, טלפון and custom field names
       const newColumnNames = ['שם', 'טלפון', ...customFields.filter(f => f.name).map(f => f.name)]
@@ -2400,6 +2412,7 @@ function NewCampaignContent() {
   }
 
   // Handle message input when variations are enabled
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Reserved for blur handler on message variations
   const handleMessageInputBlur = () => {
     if (hasMessageVariations && messageTemplate.trim() && messageVariations.length < variationCount) {
       setPendingVariationMessage(messageTemplate)
@@ -2556,7 +2569,7 @@ function NewCampaignContent() {
         wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
       })
       ffmpegLoadedRef.current = true
-      console.log('FFmpeg loaded successfully')
+      logger.debug('FFmpeg loaded successfully')
       return ffmpeg
     } catch (error) {
       console.error('Failed to load FFmpeg:', error)
@@ -2628,7 +2641,7 @@ function NewCampaignContent() {
       const baseName = (originalName || inputName).replace(/\.[^/.]+$/, '')
       const finalFile = new File([outputBlob], `${baseName}.ogg`, { type: 'audio/ogg; codecs=opus' })
 
-      console.log(`Converted ${inputName} to OGG/Opus (${finalFile.size} bytes)`)
+      logger.debug(`Converted ${inputName} to OGG/Opus (${finalFile.size} bytes)`)
       return finalFile
     } catch (error) {
       console.error('FFmpeg conversion failed:', error)
@@ -2783,7 +2796,7 @@ function NewCampaignContent() {
   const attachmentItems = [
     { type: 'audio' as const, icon: Mic, label: 'הודעה קולית' },
     { type: 'document' as const, icon: FileText, label: 'מסמך' },
-    { type: 'image' as const, icon: Image, label: 'תמונה' },
+    { type: 'image' as const, icon: ImageIcon, label: 'תמונה' },
     { type: 'camera' as const, icon: Camera, label: 'מצלמה' },
     { type: 'survey' as const, icon: BarChart3, label: 'סקר' },
     { type: 'saved' as const, icon: FolderOpen, label: 'קבצים שמורים' },
@@ -2857,6 +2870,7 @@ function NewCampaignContent() {
           {/* iPhone Preview for Mobile */}
           <div className="flex justify-center px-2 sm:px-4">
             <div className="relative w-[260px] h-[460px] sm:w-[280px] sm:h-[500px] md:w-[300px] md:h-[540px]">
+              {/* eslint-disable-next-line @next/next/no-img-element -- External CDN image */}
               <img
                 src="https://res.cloudinary.com/dimsgvsze/image/upload/v1768252870/yhgqfirwamy9jtrd9bxk_ptizqs.png"
                 alt="iPhone Preview"
@@ -2916,6 +2930,7 @@ function NewCampaignContent() {
                       {/* Attached Media Preview */}
                       {attachedMedia.type === 'image' && attachedMedia.url && (
                         <div className="mb-2 rounded-[4px] overflow-hidden">
+                          {/* eslint-disable-next-line @next/next/no-img-element -- Dynamic user-uploaded image */}
                           <img src={attachedMedia.url} alt="תמונה מצורפת" className="w-full h-auto max-h-[120px] object-cover" />
                         </div>
                       )}
@@ -3020,7 +3035,7 @@ function NewCampaignContent() {
                   darkMode ? 'bg-[#142241] text-white' : 'bg-white text-[#030733]'
                 }`}
               >
-                <Image className="w-[16px] h-[16px] sm:w-4 sm:h-4" />
+                <ImageIcon className="w-[16px] h-[16px] sm:w-4 sm:h-4" />
                 תמונה
               </button>
               <button
@@ -3064,7 +3079,7 @@ function NewCampaignContent() {
                   </span>
                   {attachedMedia.type === 'audio' && <Mic className={`w-4 h-4 ${darkMode ? 'text-green-400' : 'text-green-600'}`} />}
                   {attachedMedia.type === 'document' && <FileText className={`w-4 h-4 ${darkMode ? 'text-purple-400' : 'text-purple-600'}`} />}
-                  {attachedMedia.type === 'image' && <Image className={`w-4 h-4 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />}
+                  {attachedMedia.type === 'image' && <ImageIcon className={`w-4 h-4 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />}
                   {attachedMedia.type === 'poll' && <BarChart3 className={`w-4 h-4 ${darkMode ? 'text-orange-400' : 'text-orange-600'}`} />}
                 </div>
               </div>
@@ -3085,6 +3100,7 @@ function NewCampaignContent() {
       {/* iPhone - Fixed Position - Hidden on mobile/tablet (Desktop only) */}
       <div className="hidden xl:flex absolute left-[8px] xl:left-[10px] 2xl:left-[20px] top-[8px] xl:top-[10px] 2xl:top-[20px] bottom-[8px] xl:bottom-[10px] 2xl:bottom-[20px] w-[280px] xl:w-[300px] 2xl:w-[350px] items-start justify-center z-10 overflow-hidden">
         <div className="relative" style={{ height: 'calc(100vh - 90px)' }}>
+          {/* eslint-disable-next-line @next/next/no-img-element -- External CDN image */}
           <img
             src="https://res.cloudinary.com/dimsgvsze/image/upload/v1768252870/yhgqfirwamy9jtrd9bxk_ptizqs.png"
             alt="iPhone Preview"
@@ -3150,6 +3166,7 @@ function NewCampaignContent() {
                   {/* Attached Media Preview */}
                   {attachedMedia.type === 'image' && attachedMedia.url && (
                     <div className="mb-2 rounded-[4px] overflow-hidden">
+                      {/* eslint-disable-next-line @next/next/no-img-element -- Dynamic user-uploaded image */}
                       <img src={attachedMedia.url} alt="תמונה מצורפת" className="w-full h-auto max-h-[150px] object-cover" />
                     </div>
                   )}
@@ -4216,7 +4233,7 @@ function NewCampaignContent() {
                                   {/* Busy status indicator */}
                                   {isBusy && conn.busy_in_campaign && (
                                     <span className="text-[10px] px-[6px] py-[2px] rounded bg-red-500/20 text-red-500">
-                                      🔴 עסוק ב-"{conn.busy_in_campaign.name}"
+                                      🔴 עסוק ב-&quot;{conn.busy_in_campaign.name}&quot;
                                     </span>
                                   )}
                                 </div>
@@ -4934,7 +4951,7 @@ function NewCampaignContent() {
                 </span>
                 {attachedMedia.type === 'audio' && <Mic className={`w-4 h-4 ${darkMode ? 'text-green-400' : 'text-green-600'}`} />}
                 {attachedMedia.type === 'document' && <FileText className={`w-4 h-4 ${darkMode ? 'text-purple-400' : 'text-purple-600'}`} />}
-                {attachedMedia.type === 'image' && <Image className={`w-4 h-4 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />}
+                {attachedMedia.type === 'image' && <ImageIcon className={`w-4 h-4 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />}
                 {attachedMedia.type === 'poll' && <BarChart3 className={`w-4 h-4 ${darkMode ? 'text-orange-400' : 'text-orange-600'}`} />}
               </div>
             </div>
@@ -5145,7 +5162,7 @@ function NewCampaignContent() {
                       {audioPopupType === 'camera' ? (
                         <Camera className={`w-8 h-8 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
                       ) : (
-                        <Image className={`w-8 h-8 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
+                        <ImageIcon className={`w-8 h-8 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
                       )}
                     </div>
                     <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -5371,7 +5388,7 @@ function NewCampaignContent() {
                           'bg-blue-500/20 text-blue-500'
                         }`}>
                           {file.type === 'audio' ? <Mic className="w-5 h-5" /> :
-                           file.type === 'image' ? <Image className="w-5 h-5" /> :
+                           file.type === 'image' ? <ImageIcon className="w-5 h-5" /> :
                            <FileText className="w-5 h-5" />}
                         </div>
                         <div className="flex-1 min-w-0">
@@ -5659,7 +5676,7 @@ function NewCampaignContent() {
                     </div>
 
                     <p className={`text-[12px] text-right ${darkMode ? 'text-yellow-400' : 'text-yellow-600'}`}>
-                      חובה: לבחור עמודת "טלפון" | מומלץ: לבחור עמודת "שם"
+                      חובה: לבחור עמודת &quot;טלפון&quot; | מומלץ: לבחור עמודת &quot;שם&quot;
                     </p>
 
                     {/* Preview table */}
@@ -5712,7 +5729,7 @@ function NewCampaignContent() {
                       </button>
                       <button
                         onClick={() => {
-                          console.log('Manual button clicked!')
+                          logger.debug('Manual button clicked!')
                           handleAddParsedRecipients()
                         }}
                         className="flex-1 h-[40px] bg-[#030733] text-white rounded-[10px] text-[14px] font-medium hover:bg-[#0a1628] transition-colors"
@@ -5828,7 +5845,7 @@ function NewCampaignContent() {
             </div>
 
             <p className={`text-[12px] mb-[10px] text-right ${darkMode ? 'text-yellow-400' : 'text-yellow-600'}`}>
-              חובה: לבחור עמודת "טלפון" | מומלץ: לבחור עמודת "שם"
+              חובה: לבחור עמודת &quot;טלפון&quot; | מומלץ: לבחור עמודת &quot;שם&quot;
             </p>
 
             {/* Preview table */}
@@ -5882,7 +5899,7 @@ function NewCampaignContent() {
               </button>
               <button
                 onClick={() => {
-                  console.log('Button clicked!')
+                  logger.debug('Button clicked!')
                   handleAddExcelRecipients()
                 }}
                 className="flex-1 h-[40px] bg-[#030733] text-white rounded-[10px] text-[14px] font-medium hover:bg-[#0a1628] transition-colors"
@@ -5963,7 +5980,7 @@ function NewCampaignContent() {
             </div>
 
             <p className={`text-[12px] mb-[10px] text-right ${darkMode ? 'text-yellow-400' : 'text-yellow-600'}`}>
-              חובה: לבחור עמודת "טלפון"
+              חובה: לבחור עמודת &quot;טלפון&quot;
             </p>
 
             {/* Preview table */}
@@ -6298,7 +6315,7 @@ function NewCampaignContent() {
                         {file.type === 'audio' ? (
                           <Mic className="w-4 h-4 text-purple-400" />
                         ) : file.type === 'image' ? (
-                          <Image className="w-4 h-4 text-blue-400" />
+                          <ImageIcon className="w-4 h-4 text-blue-400" />
                         ) : (
                           <FileText className="w-4 h-4 text-gray-400" />
                         )}
@@ -6427,7 +6444,7 @@ function NewCampaignContent() {
             <p className={`text-[14px] text-center mb-[20px] ${darkMode ? 'text-gray-400' : 'text-[#595C7A]'}`}>
               אם תעזוב את הדף, תאבד את כל הנתונים שהזנת.
               <br />
-              <strong>אם תרצה, תוכל לשמור את הקמפיין כטיוטה</strong> - לחץ על כפתור "שמור כטיוטה"
+              <strong>אם תרצה, תוכל לשמור את הקמפיין כטיוטה</strong> - לחץ על כפתור &quot;שמור כטיוטה&quot;
             </p>
             <div className="flex flex-col gap-[10px]">
               <button

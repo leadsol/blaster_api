@@ -70,6 +70,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ messages: formattedMessages })
   } catch (error) {
     console.error('WAHA messages error:', error)
-    return NextResponse.json({ error: 'Failed to fetch messages from WhatsApp', messages: [] }, { status: 200 })
+    return NextResponse.json({ error: 'Failed to fetch messages from WhatsApp', messages: [] }, { status: 500 })
   }
 }

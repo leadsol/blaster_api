@@ -143,21 +143,7 @@ export default function ListsPage() {
   const [listHistory, setListHistory] = useState<ListHistoryItem[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
 
-  useEffect(() => {
-    loadLists()
-    loadBlacklist()
-  }, [])
-
-  useEffect(() => {
-    if (selectedList) {
-      loadContacts(selectedList.id)
-      loadHistory(selectedList.id)
-    } else {
-      setContacts([])
-      setListHistory([])
-    }
-  }, [selectedList])
-
+  // Define all load functions before useEffects
   const loadLists = async () => {
     setLoading(true)
     const supabase = createClient()
@@ -244,6 +230,23 @@ export default function ListsPage() {
     }
     setBlacklistLoading(false)
   }
+
+  // useEffects after all function definitions
+  useEffect(() => {
+    loadLists()
+    loadBlacklist()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    if (selectedList) {
+      loadContacts(selectedList.id)
+      loadHistory(selectedList.id)
+    } else {
+      setContacts([])
+      setListHistory([])
+    }
+  }, [selectedList])
 
   const addToBlacklist = async () => {
     if (!newBlacklistPhone.trim()) return
@@ -1621,7 +1624,7 @@ export default function ListsPage() {
               <div className="flex items-start justify-between mb-2">
                 <div>
                   <h2 className="text-[20px] font-semibold text-[#030733]">
-                    'טען רשימת נמענים'
+                    &apos;טען רשימת נמענים&apos;
                   </h2>
                   <div className="flex items-center gap-1 mt-1">
                     <Users className="w-[18px] h-[18px] text-[#030733]" />
@@ -2718,7 +2721,7 @@ export default function ListsPage() {
                     </div>
 
                     <p className="text-[12px] text-right text-yellow-600">
-                      חובה: לבחור עמודת "טלפון" | מומלץ: לבחור עמודת "שם"
+                      חובה: לבחור עמודת &quot;טלפון&quot; | מומלץ: לבחור עמודת &quot;שם&quot;
                     </p>
 
                     {/* Preview table */}
@@ -2873,7 +2876,7 @@ export default function ListsPage() {
             </div>
 
             <p className="text-[12px] mb-[10px] text-right text-yellow-600">
-              חובה: לבחור עמודת "טלפון" | מומלץ: לבחור עמודת "שם"
+              חובה: לבחור עמודת &quot;טלפון&quot; | מומלץ: לבחור עמודת &quot;שם&quot;
             </p>
 
             {/* Preview table */}

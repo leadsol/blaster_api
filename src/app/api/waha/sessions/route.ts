@@ -1,26 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { getWebhookUrl } from '@/lib/app-url'
 
 const WAHA_API_URL = process.env.WAHA_API_URL || 'https://waha.litbe.co.il'
 const WAHA_API_KEY = process.env.WAHA_API_KEY
-
-// Get webhook URL - always use production URL so WAHA can reach it
-function getWebhookBaseUrl(): string {
-  // Use dedicated webhook URL if set (for dev environment pointing to production)
-  if (process.env.WEBHOOK_URL) {
-    return process.env.WEBHOOK_URL
-  }
-  // Vercel provides this automatically in production
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}`
-  }
-  // Use app URL if it's not localhost
-  if (process.env.NEXT_PUBLIC_APP_URL && !process.env.NEXT_PUBLIC_APP_URL.includes('localhost')) {
-    return process.env.NEXT_PUBLIC_APP_URL
-  }
-  // Fallback (won't work for webhooks from external WAHA)
-  return 'https://blaster-api.vercel.app'
-}
 
 export async function GET() {
   try {
@@ -90,7 +73,7 @@ export async function POST(request: NextRequest) {
           },
           webhooks: [
             {
-              url: `${getWebhookBaseUrl()}/api/waha/webhook`,
+              url: `${getWebhookUrl()}/api/waha/webhook`,
               events: ['message', 'message.ack', 'session.status'],
             },
           ],

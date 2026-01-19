@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { logger } from '@/lib/logger'
 import { Search, Trash2, Plus, ChevronDown, ChevronUp, ArrowRight, ArrowLeft, Pencil, X, Check } from 'lucide-react'
 import { useTheme } from '@/contexts/ThemeContext'
 import { ConfirmModal, AlertModal } from '@/components/modals'
@@ -45,6 +46,7 @@ interface Campaign {
   message_variations: string[] | null
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- Reserved for contact list feature
 interface ContactList {
   id: string
   name: string
@@ -91,7 +93,9 @@ export default function CampaignSummaryPage() {
   }>({ isOpen: false, title: '', type: 'info' })
 
   useEffect(() => {
+     
     loadCampaignData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadCampaignData is defined later
   }, [campaignId])
 
   // Track unsaved changes
@@ -134,7 +138,7 @@ export default function CampaignSummaryPage() {
           filter: `id=eq.${campaignId}`
         },
         (payload) => {
-          console.log('[REALTIME] Campaign updated:', payload.new)
+          logger.debug('[REALTIME] Campaign updated:', payload.new)
           setCampaign(prev => prev ? { ...prev, ...payload.new } : null)
         }
       )
@@ -152,7 +156,7 @@ export default function CampaignSummaryPage() {
           filter: `campaign_id=eq.${campaignId}`
         },
         (payload) => {
-          console.log('[REALTIME] Message updated:', payload.new)
+          logger.debug('[REALTIME] Message updated:', payload.new)
           setMessages(prev => prev.map(m =>
             m.id === payload.new.id
               ? { ...m, ...payload.new as CampaignMessage }
@@ -169,7 +173,7 @@ export default function CampaignSummaryPage() {
           filter: `campaign_id=eq.${campaignId}`
         },
         (payload) => {
-          console.log('[REALTIME] Message inserted:', payload.new)
+          logger.debug('[REALTIME] Message inserted:', payload.new)
           setMessages(prev => [...prev, payload.new as CampaignMessage])
         }
       )
@@ -182,7 +186,7 @@ export default function CampaignSummaryPage() {
           filter: `campaign_id=eq.${campaignId}`
         },
         (payload) => {
-          console.log('[REALTIME] Message deleted:', payload.old)
+          logger.debug('[REALTIME] Message deleted:', payload.old)
           setMessages(prev => prev.filter(m => m.id !== payload.old.id))
         }
       )
@@ -238,9 +242,9 @@ export default function CampaignSummaryPage() {
       setMessages(messagesData || [])
       // Debug: Log first and last message to check scheduled_delay_seconds
       if (messagesData && messagesData.length > 0) {
-        console.log('First message scheduled_delay_seconds:', messagesData[0]?.scheduled_delay_seconds)
-        console.log('Last message scheduled_delay_seconds:', messagesData[messagesData.length - 1]?.scheduled_delay_seconds)
-        console.log('Total messages:', messagesData.length)
+        logger.debug('First message scheduled_delay_seconds:', messagesData[0]?.scheduled_delay_seconds)
+        logger.debug('Last message scheduled_delay_seconds:', messagesData[messagesData.length - 1]?.scheduled_delay_seconds)
+        logger.debug('Total messages:', messagesData.length)
       }
 
       // Extract dynamic columns from first message with variables
@@ -377,6 +381,7 @@ export default function CampaignSummaryPage() {
     const currentCount = messages.length
 
     // Random delay for this specific message
+     
     const randomDelay = Math.floor(Math.random() * (campaign.delay_max - campaign.delay_min + 1)) + campaign.delay_min
 
     // Start with cumulative delay
@@ -393,11 +398,11 @@ export default function CampaignSummaryPage() {
       const bulkIndex = Math.floor(currentCount / MESSAGES_PER_BULK) - 1
       const pauseIndex = Math.min(bulkIndex, BULK_PAUSE_SECONDS.length - 1)
       const pauseAmount = BULK_PAUSE_SECONDS[pauseIndex]
-      console.log(`⏸️  Adding bulk pause after message ${currentCount}: ${pauseAmount}s (${pauseAmount/60} minutes)`)
+      logger.debug(`Adding bulk pause after message ${currentCount}: ${pauseAmount}s (${pauseAmount/60} minutes)`)
       newDelay += pauseAmount
     }
 
-    console.log(`➕ Adding message #${newMessageNumber}: baseDelay=${maxDelay}s, random=${randomDelay}s, total=${newDelay}s`)
+    logger.debug(`Adding message #${newMessageNumber}: baseDelay=${maxDelay}s, random=${randomDelay}s, total=${newDelay}s`)
 
     // Create new empty message
     const newMessage = {
@@ -457,7 +462,7 @@ export default function CampaignSummaryPage() {
     let cumulativeDelaySeconds = 0
     const updates: { id: string; scheduled_delay_seconds: number }[] = []
 
-    console.log(`🔄 Recalculating delays for ${currentMessages.length} messages`)
+    logger.debug(`Recalculating delays for ${currentMessages.length} messages`)
 
     for (let index = 0; index < currentMessages.length; index++) {
       const message = currentMessages[index]
@@ -477,7 +482,7 @@ export default function CampaignSummaryPage() {
         const bulkIndex = Math.floor(messageNumber / MESSAGES_PER_BULK) - 1
         const pauseIndex = Math.min(bulkIndex, BULK_PAUSE_SECONDS.length - 1)
         const pauseAmount = BULK_PAUSE_SECONDS[pauseIndex]
-        console.log(`⏸️  [Recalc] Adding bulk pause after message ${messageNumber}: ${pauseAmount}s`)
+        logger.debug(`[Recalc] Adding bulk pause after message ${messageNumber}: ${pauseAmount}s`)
         cumulativeDelaySeconds += pauseAmount
       }
 
@@ -487,7 +492,7 @@ export default function CampaignSummaryPage() {
       })
     }
 
-    console.log(`✅ [Recalc] Total estimated duration: ${cumulativeDelaySeconds}s (${(cumulativeDelaySeconds/60).toFixed(2)} minutes)`)
+    logger.debug(`[Recalc] Total estimated duration: ${cumulativeDelaySeconds}s (${(cumulativeDelaySeconds/60).toFixed(2)} minutes)`)
 
     // Update all messages in database with single batch upsert
     const { error: updateError } = await supabase
@@ -702,13 +707,13 @@ export default function CampaignSummaryPage() {
     const lastTodayMessage = sortedMessages[messagesForToday - 1]
     let totalSeconds = lastTodayMessage?.scheduled_delay_seconds || 0
 
-    console.log('Duration calc - messagesForToday:', messagesForToday, 'lastTodayMessage index:', messagesForToday - 1)
-    console.log('Duration calc - lastTodayMessage scheduled_delay_seconds:', lastTodayMessage?.scheduled_delay_seconds)
-    console.log('Duration calc - totalSeconds:', totalSeconds)
+    logger.debug('Duration calc - messagesForToday:', messagesForToday, 'lastTodayMessage index:', messagesForToday - 1)
+    logger.debug('Duration calc - lastTodayMessage scheduled_delay_seconds:', lastTodayMessage?.scheduled_delay_seconds)
+    logger.debug('Duration calc - totalSeconds:', totalSeconds)
 
     // If no pre-calculated delays exist (old campaigns), fall back to estimation
     if (!totalSeconds) {
-      console.log('Duration calc - using fallback estimation (no pre-calculated delays)')
+      logger.debug('Duration calc - using fallback estimation (no pre-calculated delays)')
       const MESSAGES_PER_BULK = 30
       const DELAY_MIN = campaign?.delay_min || 10
       const DELAY_MAX = campaign?.delay_max || 60
@@ -1150,12 +1155,12 @@ export default function CampaignSummaryPage() {
               {existingListName && (
                 <p>
                   <span className="font-semibold">שיוך רשימה - </span>
-                  <span className="font-normal">הנמענים ברשימה זו יכנסו לרשימת הלקוחות "{existingListName}"</span>
+                  <span className="font-normal">הנמענים ברשימה זו יכנסו לרשימת הלקוחות &quot;{existingListName}&quot;</span>
                 </p>
               )}
 
               <p>
-                <span className="font-semibold">סה"כ נמענים - </span>
+                <span className="font-semibold">סה&quot;כ נמענים - </span>
                 <span className="font-normal">{messages.length}</span>
               </p>
 

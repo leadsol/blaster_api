@@ -34,7 +34,6 @@ export async function GET() {
 
 // POST - Create a new campaign
 export async function POST(request: NextRequest) {
-  console.log('=== POST /api/campaigns called ===')
   try {
     const supabase = await createClient()
 
@@ -44,15 +43,15 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    let {
+    const {
       name,
       connection_id,
       message_template,
       media_url,
       media_type,
       scheduled_at,
-      delay_min,
-      delay_max,
+      delay_min: delay_min_input,
+      delay_max: delay_max_input,
       pause_after_messages,
       pause_seconds,
       respect_active_hours,
@@ -73,8 +72,8 @@ export async function POST(request: NextRequest) {
     } = body
 
     // Ensure delay values are valid numbers with proper defaults
-    delay_min = Number(delay_min) || 10
-    delay_max = Number(delay_max) || 60
+    let delay_min = Number(delay_min_input) || 10
+    let delay_max = Number(delay_max_input) || 60
 
     // Ensure delay_min is at least 10 seconds
     delay_min = Math.max(10, delay_min)
@@ -161,7 +160,6 @@ export async function POST(request: NextRequest) {
       .eq('user_id', user.id)
 
     const blacklistSet = new Set((blacklistData || []).map(b => b.phone.replace(/\D/g, '')))
-    console.log(`🚫 [CAMPAIGN] Found ${blacklistSet.size} blacklisted phones`)
 
     // Filter recipients - remove both exclusion list and blacklist
     const filteredRecipients: Array<{ phone: string; name?: string; variables?: Record<string, string> }> = []
@@ -178,7 +176,6 @@ export async function POST(request: NextRequest) {
       if (blacklistSet.has(cleanPhone)) {
         // Track as blacklisted (will create message with 'blacklisted' status)
         blacklistedRecipients.push(r)
-        console.log(`🚫 [CAMPAIGN] Phone ${cleanPhone} is blacklisted`)
       } else {
         // Valid recipient
         filteredRecipients.push(r)
@@ -262,13 +259,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Create campaign messages for each recipient with pre-calculated delays
-    // Constants for timing - DEFAULT bulk pauses (always active)
-    const MESSAGES_PER_BULK = 30
-    const BULK_PAUSE_SECONDS = [
-      30 * 60,    // After 1st bulk (30 messages): 30 minutes
-      60 * 60,    // After 2nd bulk (60 messages): 1 hour
-      90 * 60,    // After 3rd bulk (90 messages): 1.5 hours - and this repeats
-    ]
+    // Import shared constants for bulk pause timing
+    const { MESSAGES_PER_BULK, BULK_PAUSE_SECONDS } = await import('@/lib/constants')
 
     // Custom pause settings (user-defined, IN ADDITION to default bulk pauses)
     const customPauseAfter = pause_after_messages || 0
@@ -276,11 +268,6 @@ export async function POST(request: NextRequest) {
     const hasCustomPause = customPauseAfter > 0 && customPauseSeconds > 0
 
     let cumulativeDelaySeconds = 0
-    console.log(`🔵 Creating messages for ${filteredRecipients.length} recipients`)
-    console.log(`🔵 delay_min: ${delay_min}, delay_max: ${delay_max}`)
-    if (hasCustomPause) {
-      console.log(`🔵 Custom pause: every ${customPauseAfter} messages, pause for ${customPauseSeconds}s (${customPauseSeconds/60} min)`)
-    }
 
     const campaignMessages = filteredRecipients.map((recipient: { phone: string; name?: string; variables?: Record<string, string> }, index: number) => {
       // Replace variables in message template
@@ -304,14 +291,11 @@ export async function POST(request: NextRequest) {
       const messageNumber = index + 1
       const isLastMessage = messageNumber === filteredRecipients.length
 
-      console.log(`🔵 Message ${messageNumber}/${filteredRecipients.length}: delay=${messageDelay}s, cumulative=${cumulativeDelaySeconds}s, isLast=${isLastMessage}`)
-
       // DEFAULT bulk pause (every 30 messages)
       if (!isLastMessage && messageNumber % MESSAGES_PER_BULK === 0) {
         const bulkIndex = Math.floor(messageNumber / MESSAGES_PER_BULK) - 1
         const pauseIndex = Math.min(bulkIndex, BULK_PAUSE_SECONDS.length - 1)
         const pauseAmount = BULK_PAUSE_SECONDS[pauseIndex]
-        console.log(`⏸️  Adding DEFAULT bulk pause after message ${messageNumber}: ${pauseAmount}s (${pauseAmount/60} minutes)`)
         cumulativeDelaySeconds += pauseAmount
       }
 
@@ -320,7 +304,6 @@ export async function POST(request: NextRequest) {
       if (hasCustomPause && !isLastMessage && messageNumber % customPauseAfter === 0) {
         // Skip if this is also a default bulk pause boundary (avoid double pause on same message)
         if (messageNumber % MESSAGES_PER_BULK !== 0) {
-          console.log(`⏸️  Adding CUSTOM pause after message ${messageNumber}: ${customPauseSeconds}s (${customPauseSeconds/60} minutes)`)
           cumulativeDelaySeconds += customPauseSeconds
         }
       }
@@ -335,8 +318,6 @@ export async function POST(request: NextRequest) {
         scheduled_delay_seconds: cumulativeDelaySeconds,
       }
     })
-
-    console.log(`✅ Total estimated duration: ${cumulativeDelaySeconds}s (${(cumulativeDelaySeconds/60).toFixed(2)} minutes)`)
 
     const { error: messagesError } = await supabase
       .from('campaign_messages')
@@ -382,8 +363,6 @@ export async function POST(request: NextRequest) {
       if (blacklistMessagesError) {
         console.error('Error creating blacklisted messages:', blacklistMessagesError)
         // Don't fail the campaign - blacklist messages are optional for display
-      } else {
-        console.log(`🚫 [CAMPAIGN] Created ${blacklistedMessages.length} blacklisted message records`)
       }
     }
 
@@ -426,8 +405,6 @@ export async function POST(request: NextRequest) {
           description: `נוצר מקמפיין "${name}" עם ${filteredRecipients.length} אנשי קשר`,
           campaign_id: campaign.id
         })
-
-        console.log(`📋 [CAMPAIGN] Created new contact list "${new_list_name}" with ${filteredRecipients.length} contacts`)
       }
     }
 
@@ -477,11 +454,7 @@ export async function POST(request: NextRequest) {
             description: `נוספו ${newContacts.length} אנשי קשר מקמפיין "${name}"`,
             campaign_id: campaign.id
           })
-
-          console.log(`📋 [CAMPAIGN] Added ${newContacts.length} contacts to existing list "${listData.name}"`)
         }
-      } else {
-        console.log(`📋 [CAMPAIGN] All recipients already exist in the list, no new contacts added`)
       }
     }
 

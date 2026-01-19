@@ -2,33 +2,24 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { logger } from '@/lib/logger'
 import {
   Search,
-  Plus,
   Upload,
   Download,
   Trash2,
   Edit2,
   Users,
-  MoreVertical,
   X,
   FileText,
   Filter,
-  ChevronDown,
-  Check,
-  Phone,
-  Mail,
-  Calendar,
-  Tag,
-  MessageSquare,
-  Eye,
   UserPlus,
-  Loader2
+  Loader2,
+  MessageSquare
 } from 'lucide-react'
 import { useTheme } from '@/contexts/ThemeContext'
 import { ConfirmModal } from '@/components/modals'
 import { format } from 'date-fns'
-import { he } from 'date-fns/locale'
 import { normalizePhone, formatPhoneForDisplay } from '@/lib/phone-utils'
 
 interface Contact {
@@ -71,76 +62,7 @@ export default function ContactsPage() {
   const [contactToDelete, setContactToDelete] = useState<Contact | null>(null)
   const [showDeleteMultipleConfirm, setShowDeleteMultipleConfirm] = useState(false)
 
-  useEffect(() => {
-    loadContacts()
-  }, [])
-
-  // Realtime subscription for contacts
-  useEffect(() => {
-    const supabase = createClient()
-
-    // Get current user for filtering
-    const setupRealtime = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
-
-      // Subscribe to contacts changes for current user
-      const contactsChannel = supabase
-        .channel('contacts-realtime')
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'contacts',
-            filter: `user_id=eq.${user.id}`
-          },
-          (payload) => {
-            console.log('[REALTIME] Contact inserted:', payload.new)
-            setContacts(prev => [payload.new as Contact, ...prev])
-          }
-        )
-        .on(
-          'postgres_changes',
-          {
-            event: 'UPDATE',
-            schema: 'public',
-            table: 'contacts',
-            filter: `user_id=eq.${user.id}`
-          },
-          (payload) => {
-            console.log('[REALTIME] Contact updated:', payload.new)
-            setContacts(prev => prev.map(c =>
-              c.id === payload.new.id ? { ...c, ...payload.new as Contact } : c
-            ))
-          }
-        )
-        .on(
-          'postgres_changes',
-          {
-            event: 'DELETE',
-            schema: 'public',
-            table: 'contacts',
-            filter: `user_id=eq.${user.id}`
-          },
-          (payload) => {
-            console.log('[REALTIME] Contact deleted:', payload.old)
-            setContacts(prev => prev.filter(c => c.id !== payload.old.id))
-          }
-        )
-        .subscribe()
-
-      return () => {
-        supabase.removeChannel(contactsChannel)
-      }
-    }
-
-    const cleanup = setupRealtime()
-    return () => {
-      cleanup.then(fn => fn?.())
-    }
-  }, [])
-
+  // Define loadContacts before useEffect
   const loadContacts = async () => {
     setLoading(true)
     const supabase = createClient()
@@ -165,6 +87,77 @@ export default function ContactsPage() {
     }
     setLoading(false)
   }
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Initial data fetch on mount is intentional
+    loadContacts()
+  }, [])
+
+  // Realtime subscription for contacts
+  useEffect(() => {
+    const supabase = createClient()
+
+    // Get current user for filtering
+    const setupRealtime = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      // Subscribe to contacts changes for current user
+      const contactsChannel = supabase
+        .channel('contacts-realtime')
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'contacts',
+            filter: `user_id=eq.${user.id}`
+          },
+          (payload) => {
+            logger.debug('[REALTIME] Contact inserted:', payload.new)
+            setContacts(prev => [payload.new as Contact, ...prev])
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'contacts',
+            filter: `user_id=eq.${user.id}`
+          },
+          (payload) => {
+            logger.debug('[REALTIME] Contact updated:', payload.new)
+            setContacts(prev => prev.map(c =>
+              c.id === payload.new.id ? { ...c, ...payload.new as Contact } : c
+            ))
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'DELETE',
+            schema: 'public',
+            table: 'contacts',
+            filter: `user_id=eq.${user.id}`
+          },
+          (payload) => {
+            logger.debug('[REALTIME] Contact deleted:', payload.old)
+            setContacts(prev => prev.filter(c => c.id !== payload.old.id))
+          }
+        )
+        .subscribe()
+
+      return () => {
+        supabase.removeChannel(contactsChannel)
+      }
+    }
+
+    const cleanup = setupRealtime()
+    return () => {
+      cleanup.then(fn => fn?.())
+    }
+  }, [])
 
   const createContact = async () => {
     if (!newContact.phone.trim()) return
@@ -541,7 +534,7 @@ export default function ContactsPage() {
             <h3 className={`${darkMode ? 'text-white' : 'text-[#030733]'} text-[14px] sm:text-[18px] font-semibold mb-2 sm:mb-4`}>סיכום אנשי קשר</h3>
             <div className="grid grid-cols-4 lg:grid-cols-1 gap-2 sm:gap-4">
               <div className="flex flex-col lg:flex-row items-center lg:justify-between text-center lg:text-right">
-                <span className={`${darkMode ? 'text-gray-400' : 'text-[#595C7A]'} text-[10px] sm:text-[14px]`}>סה"כ</span>
+                <span className={`${darkMode ? 'text-gray-400' : 'text-[#595C7A]'} text-[10px] sm:text-[14px]`}>סה&quot;כ</span>
                 <span className={`${darkMode ? 'text-white' : 'text-[#030733]'} text-[14px] sm:text-[18px] font-bold`}>{contacts.length}</span>
               </div>
               <div className="flex flex-col lg:flex-row items-center lg:justify-between text-center lg:text-right">

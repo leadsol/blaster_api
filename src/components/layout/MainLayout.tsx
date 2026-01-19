@@ -29,6 +29,7 @@ export function MainLayout({ children }: MainLayoutProps) {
         >
           <Menu className="w-6 h-6" />
         </button>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="https://res.cloudinary.com/dimsgvsze/image/upload/v1768252823/9355f35c-2671-4e32-831f-21d63a876684_zjmk09.png"
           alt="LeadSol Logo"

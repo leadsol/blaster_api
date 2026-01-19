@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { isQStashConfigured, scheduleNextBatch } from '@/lib/qstash'
+import { getAppUrl } from '@/lib/app-url'
+import { logger } from '@/lib/logger'
 
 const CRON_SECRET = process.env.CRON_SECRET
 
@@ -177,15 +179,15 @@ export async function POST(
         })
       } else {
         // QStash scheduling failed, fall back to direct call
-        console.error('[PROCESS] QStash scheduling failed, attempting direct process')
+        logger.error('[PROCESS] QStash scheduling failed, attempting direct process')
       }
     }
 
     // Fallback: Call process-batch directly (will work for small campaigns)
     // This is a backup in case QStash is not configured or fails
-    console.log('[PROCESS] Falling back to direct batch processing')
+    logger.debug('[PROCESS] Falling back to direct batch processing')
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    const appUrl = getAppUrl()
     fetch(`${appUrl}/api/campaigns/${campaignId}/process-batch`, {
       method: 'POST',
       headers: {
@@ -193,7 +195,7 @@ export async function POST(
         'x-internal-secret': CRON_SECRET || ''
       }
     }).catch(err => {
-      console.error('[PROCESS] Background batch processing error:', err)
+      logger.error('[PROCESS] Background batch processing error:', err)
     })
 
     return NextResponse.json({
@@ -204,7 +206,7 @@ export async function POST(
     })
 
   } catch (error) {
-    console.error('Campaign process error:', error)
+    logger.error('Campaign process error:', error)
 
     // Mark campaign as failed - use admin client to bypass RLS
     try {
