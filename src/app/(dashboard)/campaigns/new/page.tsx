@@ -666,8 +666,14 @@ function NewCampaignContent() {
     // Message variations
     if (campaign.message_variations && campaign.message_variations.length > 0) {
       setHasMessageVariations(true)
-      setMessageVariations(campaign.message_variations)
-      setVariationCount(campaign.message_variations.length)
+      // Ensure array has exact length - filter empty values
+      const variations = campaign.message_variations.filter((v: string) => v && v.trim().length > 0)
+      setMessageVariations(variations)
+      setVariationCount(variations.length)
+      // Set first variation as messageTemplate for display
+      if (variations[0]) {
+        setMessageTemplate(variations[0])
+      }
     }
 
     // Delay settings
@@ -814,8 +820,14 @@ function NewCampaignContent() {
     // Message variations
     if (campaign.message_variations && campaign.message_variations.length > 0) {
       setHasMessageVariations(true)
-      setMessageVariations(campaign.message_variations)
-      setVariationCount(campaign.message_variations.length)
+      // Ensure array has exact length - filter empty values
+      const variations = campaign.message_variations.filter((v: string) => v && v.trim().length > 0)
+      setMessageVariations(variations)
+      setVariationCount(variations.length)
+      // Set first variation as messageTemplate for display
+      if (variations[0]) {
+        setMessageTemplate(variations[0])
+      }
     }
 
     // Delay settings

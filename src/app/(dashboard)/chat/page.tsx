@@ -202,17 +202,25 @@ export default function ChatPage() {
   useEffect(() => {
     if (selectedConnection) {
       loadLiveCampaign()
-      // Set up real-time subscription for campaign updates only
+      // Set up real-time subscription for campaign status changes
+      // Note: We can't filter by device_ids array in realtime, so we listen to all campaigns
+      // and then filter in loadLiveCampaign
       const supabase = createClient()
       const channel = supabase
         .channel('live-campaign-updates')
         .on('postgres_changes', {
           event: '*',
           schema: 'public',
-          table: 'campaigns',
-          filter: `connection_id=eq.${selectedConnection.id}`
-        }, () => {
-          loadLiveCampaign()
+          table: 'campaigns'
+        }, (payload) => {
+          // Check if this campaign involves our connection
+          const campaign = payload.new as any
+          const connectionId = selectedConnection.id
+          const isRelevant = campaign.connection_id === connectionId ||
+            (campaign.device_ids && campaign.device_ids.includes(connectionId))
+          if (isRelevant) {
+            loadLiveCampaign()
+          }
         })
         .subscribe()
 
@@ -225,12 +233,14 @@ export default function ChatPage() {
     }
   }, [selectedConnection])
 
-  // Separate subscription for campaign messages - depends on liveCampaign
+  // Separate subscription for campaign messages AND campaign stats - depends on liveCampaign
   useEffect(() => {
     if (!liveCampaign) return
 
     const supabase = createClient()
-    const channel = supabase
+
+    // Subscribe to campaign messages changes
+    const messagesChannel = supabase
       .channel(`campaign-messages-${liveCampaign.id}`)
       .on('postgres_changes', {
         event: '*',
@@ -243,8 +253,29 @@ export default function ChatPage() {
       })
       .subscribe()
 
+    // Subscribe to campaign stats changes (sent_count, failed_count, etc)
+    const campaignChannel = supabase
+      .channel(`campaign-stats-${liveCampaign.id}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'campaigns',
+        filter: `id=eq.${liveCampaign.id}`
+      }, (payload) => {
+        console.log('[DEBUG] Campaign stats subscription triggered:', payload.new)
+        // Update liveCampaign state with new stats
+        setLiveCampaign(prev => prev ? {
+          ...prev,
+          sent_count: (payload.new as any).sent_count ?? prev.sent_count,
+          failed_count: (payload.new as any).failed_count ?? prev.failed_count,
+          status: (payload.new as any).status ?? prev.status
+        } : null)
+      })
+      .subscribe()
+
     return () => {
-      supabase.removeChannel(channel)
+      supabase.removeChannel(messagesChannel)
+      supabase.removeChannel(campaignChannel)
     }
   }, [liveCampaign?.id])
 
