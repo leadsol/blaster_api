@@ -151,16 +151,9 @@ async function handler(
     const sentSoFar = totalSentCount || 0
     console.log(`[PROCESS-BATCH] Total sent messages so far: ${sentSoFar}`)
 
-    // Bulk pause configuration
-    const MESSAGES_PER_BULK = 30
-    const BULK_PAUSE_SECONDS = [
-      30 * 60,    // After 1st bulk (30 messages): 30 minutes
-      60 * 60,    // After 2nd bulk (60 messages): 1 hour
-      90 * 60,    // After 3rd bulk (90 messages): 1.5 hours - and this repeats
-    ]
-
-    // Schedule messages with RANDOM delays between 10-60 seconds
-    // This ensures safe spacing to avoid WhatsApp blocking
+    // Schedule messages using their pre-calculated scheduled_delay_seconds
+    // The bulk pauses are ALREADY included in scheduled_delay_seconds when the campaign was created
+    // DO NOT add bulk pauses again here - that would cause double pauses!
     let scheduledCount = 0
     let cumulativeDelay = 10 // Start with initial delay of 10 seconds
     const MIN_DELAY = 10 // Minimum delay between messages
@@ -178,6 +171,7 @@ async function handler(
         cumulativeDelay = delayFromNow
       } else {
         // Calculate the spacing between this message and the previous one from stored values
+        // This spacing ALREADY includes any bulk pauses that were calculated at campaign creation
         const prevDelay = pendingMessages[i - 1].scheduled_delay_seconds || 0
         let spacing = currentDelay - prevDelay
 
@@ -188,30 +182,12 @@ async function handler(
           console.log(`[PROCESS-BATCH] Generated random spacing: ${spacing}s (original was ${currentDelay - prevDelay}s)`)
         }
 
-        // Accumulate the spacing
+        // Accumulate the spacing (which already includes bulk pauses from scheduled_delay_seconds)
         cumulativeDelay += spacing
         delayFromNow = cumulativeDelay
       }
 
-      // Dynamic bulk pause: Check if we're crossing a bulk boundary based on SENT messages
-      // This ensures failures don't count towards bulk pause
-      const messagesWillBeSentAfterThis = sentSoFar + scheduledCount + 1
-      const currentBulkNumber = Math.floor(sentSoFar / MESSAGES_PER_BULK)
-      const newBulkNumber = Math.floor(messagesWillBeSentAfterThis / MESSAGES_PER_BULK)
-
-      // If we're crossing into a new bulk, add bulk pause
-      if (newBulkNumber > currentBulkNumber) {
-        const pauseIndex = Math.min(newBulkNumber - 1, BULK_PAUSE_SECONDS.length - 1)
-        const bulkPause = BULK_PAUSE_SECONDS[pauseIndex]
-
-        console.log(`🛑 [PROCESS-BATCH] Bulk boundary crossed! Adding ${bulkPause}s (${bulkPause/60} min) pause after message ${messagesWillBeSentAfterThis}`)
-        console.log(`   📊 Sent so far: ${sentSoFar}, After this: ${messagesWillBeSentAfterThis}, Bulk: ${currentBulkNumber} → ${newBulkNumber}`)
-
-        cumulativeDelay += bulkPause
-        delayFromNow = cumulativeDelay
-      }
-
-      console.log(`[PROCESS-BATCH] Scheduling message ${message.id} with ${delayFromNow}s total delay from now`)
+      console.log(`[PROCESS-BATCH] Scheduling message ${message.id} with ${delayFromNow}s total delay from now (scheduled_delay: ${currentDelay}s)`)
 
       // Check if QStash is available for scheduling
       if (isQStashConfigured()) {
